@@ -1,5 +1,5 @@
 import {createServer} from 'node:http';
-import {readFile, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, stat, writeFile} from 'node:fs/promises';
 import {dirname, resolve} from 'node:path';
 
 import {PNG} from 'pngjs';
@@ -8,6 +8,11 @@ import {Launcher} from 'chrome-launcher';
 import handler from 'serve-handler';
 
 import {Image2d, compare} from './image.js';
+
+interface Dimensions {
+    width: number;
+    height: number;
+}
 
 /** Test scenario, mapping the runtime event to a reference. */
 interface Scenario {
@@ -80,7 +85,7 @@ async function loadReferences(scenarios: Scenario[]): Promise<(Image2d | Error)[
  * @param pngs The entire list of pngs (one per scenario).
  * @returns A promise that resolves once all writes are done or failed.
  */
-function saveReferences(indices: number[], scenarios: Scenario[], pngs: Buffer[]) {
+async function saveReferences(indices: number[], scenarios: Scenario[], pngs: Buffer[]) {
     const promises = [];
     for (const index of indices) {
         const data = pngs[index];
@@ -108,6 +113,9 @@ export enum LogLevel {
 export class Config {
     projects: Project[] = [];
 
+    width = 480;
+    height = 270;
+
     saveOnFailure = false;
     port: number = 8080;
     watch: string | null = null;
@@ -116,15 +124,16 @@ export class Config {
     async add(configPath: string) {
         const configAbsPath = resolve(configPath);
         const data = await readFile(resolve(configPath), 'utf8');
-        const {project, scenarios, timeout = 60000} = JSON.parse(data) as Project;
+        const json = JSON.parse(data) as Project;
+
+        const {project, timeout = 60000} = json;
+        const scenarios = Array.isArray(json.scenarios) ? json.scenarios : [json.scenarios];
 
         const basePath = resolve(dirname(configPath));
         const path = resolve(basePath, dirname(project));
 
-        this._validateScenarios(scenarios as ScenarioJson[]);
-
         const processedScenarios = (scenarios as ScenarioJson[]).map((s) => ({
-            event: s.event ?? `wle-scene-loaded:${s.loadEvent}`,
+            event: s.event ?? s.loadEvent ? `wle-scene-loaded:${s.loadEvent}` : '',
             reference: resolve(basePath, s.reference),
             tolerance: 0.01,
         }));
@@ -160,16 +169,33 @@ export class Config {
      *
      * @param scenarios The list of scenarios to validate.
      */
-    _validateScenarios(scenarios: ScenarioJson[]) {
-        /* Check the validity of each scenario */
-        let error = '';
-        for (const scenario of scenarios as ScenarioJson[]) {
-            if (!scenario.event && !scenario.loadEvent) {
-                error += `* Missing 'event' or 'loadEvent' key for scenario with reference: '${scenario.reference}'`;
+    async validate() {
+        for (const project of this.projects) {
+            const missingEventScenarios = project.scenarios
+                .map((s, i) => (s.event ? null : i))
+                .filter((v) => v !== null);
+            if (missingEventScenarios.length > 0) {
+                throw new Error(
+                    `'${project.project}':` +
+                        `Missing 'event' or 'loadEvent' key for scenarios: ${missingEventScenarios}`
+                );
             }
-        }
-        if (error) {
-            throw new Error(error);
+            const folderSet = new Set<string>();
+            project.scenarios.forEach((s) => folderSet.add(dirname(s.reference)));
+            const folders = Array.from(folderSet);
+
+            const stats = await Promise.allSettled(folders.map(async (dir) => stat(dir)));
+            const errors = stats
+                .map((r, i) => {
+                    if (r.status === 'fulfilled') return null;
+                    return `\n- Missing ${summarizePath(folders[i])} folder`;
+                })
+                .filter((v) => v !== null);
+
+            throw new Error(
+                `'${project.project}' contains a scenario(s) with missing reference folder:` +
+                    errors
+            );
         }
     }
 }
@@ -196,9 +222,6 @@ export class Config {
  * ```
  */
 export class FidelityRunner {
-    width: number = 640;
-    height: number = 480;
-
     /** Base path to serve. @hidden */
     _currentBasePath = '';
 
@@ -258,14 +281,22 @@ export class FidelityRunner {
             `📎 Running project ${project.project} with ${scenarios.length} scenarios\n`
         );
 
-        /* Load references & capture screenshots simultaneously. */
-        const [references, pngs] = await Promise.all([
-            loadReferences(scenarios),
-            this._captureScreenshots(config, project, browser),
-        ]);
+        /* Load references first to validate their size. */
+        const references = await loadReferences(scenarios);
+
+        const first = references.find((img) => !(img instanceof Error)) as
+            | Image2d
+            | undefined;
+
+        /* Capture page screenshots upon events coming from the application. */
+        const pngs = await this._captureScreenshots(browser, config, project, {
+            width: first?.width ?? config.width,
+            height: first?.height ?? config.height,
+        });
+
         const screenshots = pngs.map((s) => (s instanceof Error ? s : parsePNG(s)));
 
-        console.log(`\n✏️  Comparing scenarios...\n`);
+        console.log(`✏️  Comparing scenarios...\n`);
 
         // @todo: Move into worker
         const screenshotToSave: number[] = [];
@@ -324,6 +355,8 @@ export class FidelityRunner {
             }
         }
 
+        console.log('\n');
+
         return success;
     }
 
@@ -336,7 +369,12 @@ export class FidelityRunner {
      * @returns An array of promise that resolve with the data for loaded images,
      *    or errors for failed images.
      */
-    async _captureScreenshots(config: Config, project: Project, browser: Browser) {
+    async _captureScreenshots(
+        browser: Browser,
+        config: Config,
+        project: Project,
+        {width, height}: Dimensions
+    ) {
         const scenarios = project.scenarios;
         const count = scenarios.length;
         const results: (Buffer | Error)[] = new Array(count).fill(null);
@@ -361,12 +399,7 @@ export class FidelityRunner {
                 console.log('[browser]', ...args);
             }
         });
-        page.setViewport({
-            // @todo: This should be updated per-reference.
-            width: this.width,
-            height: this.height,
-            deviceScaleFactor: 1,
-        });
+        page.setViewport({width, height, deviceScaleFactor: 1});
 
         /* We do not use waitUntil: 'networkidle0' in order to setup
          * the event sink before the project is fully loaded. */
@@ -419,8 +452,6 @@ export class FidelityRunner {
             console.log(`Watching scenario ${config.watch}...`);
             await page.waitForNavigation();
         }
-
-        console.log('Closing page');
 
         await page.close();
         return results;
