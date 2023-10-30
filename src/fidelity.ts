@@ -153,6 +153,13 @@ export class Config {
         return null;
     }
 
+    /**
+     * Validate the list of scenarios.
+     *
+     * @note **Throws** if any of the scenario validation fails.
+     *
+     * @param scenarios The list of scenarios to validate.
+     */
     _validateScenarios(scenarios: ScenarioJson[]) {
         /* Check the validity of each scenario */
         let error = '';
@@ -393,7 +400,7 @@ export class FidelityRunner {
 
         /* The runner also supports scene loaded events, forwarded in the DOM.
          * Each time a load event occurs, we convert it to a unique event name and
-         * */
+         * forward the call to `fidelityScreenshot`. */
         await page.evaluate(() => {
             document.addEventListener('wle-scene-loaded', function (e) {
                 // @ts-ignore
