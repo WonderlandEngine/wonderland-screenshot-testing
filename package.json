@@ -1,0 +1,30 @@
+{
+  "name": "@wonderlandengine/screenshot-testing",
+  "version": "1.0.0",
+  "author": "WonderlandEngine",
+  "license": "ISC",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "wle-fidelity": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node dist/cli.js",
+    "pretty": "prettier --config ./prettierrc.json --write \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "@types/node": "^18.11.9",
+    "@types/pngjs": "^6.0.3",
+    "@types/serve-handler": "^6.1.2",
+    "chrome-launcher": "^1.1.0",
+    "pngjs": "^7.0.0",
+    "puppeteer-core": "^21.3.8",
+    "serve-handler": "^6.1.5"
+  },
+  "devDependencies": {
+    "prettier": "^3.0.3",
+    "typescript": "^5.2.2"
+  }
+}
