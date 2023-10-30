@@ -192,10 +192,12 @@ export class Config {
                 })
                 .filter((v) => v !== null);
 
-            throw new Error(
-                `'${project.project}' contains a scenario(s) with missing reference folder:` +
-                    errors
-            );
+            if (errors.length > 0) {
+                throw new Error(
+                    `'${project.project}' contains a scenario(s) with missing reference folder:` +
+                        errors
+                );
+            }
         }
     }
 }
