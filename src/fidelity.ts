@@ -24,6 +24,11 @@ interface Project {
     scenarios: Scenario[];
 }
 
+/** Raw scenario description from the configuration file. */
+interface ScenarioJson extends Scenario {
+    loadEvent: string;
+}
+
 function summarizePath(path: string): string {
     const paths = path.split('/');
     const last = paths.length - 1;
@@ -116,8 +121,10 @@ export class Config {
         const basePath = resolve(dirname(configPath));
         const path = resolve(basePath, dirname(project));
 
-        const processedScenarios = scenarios.map((s) => ({
-            event: s.event ?? 'scene-load',
+        this._validateScenarios(scenarios as ScenarioJson[]);
+
+        const processedScenarios = (scenarios as ScenarioJson[]).map((s) => ({
+            event: s.event ?? `wle-scene-loaded:${s.loadEvent}`,
             reference: resolve(basePath, s.reference),
             tolerance: 0.01,
         }));
@@ -144,6 +151,26 @@ export class Config {
             if (scenario) return scenario;
         }
         return null;
+    }
+
+    /**
+     * Validate the list of scenarios.
+     *
+     * @note **Throws** if any of the scenario validation fails.
+     *
+     * @param scenarios The list of scenarios to validate.
+     */
+    _validateScenarios(scenarios: ScenarioJson[]) {
+        /* Check the validity of each scenario */
+        let error = '';
+        for (const scenario of scenarios as ScenarioJson[]) {
+            if (!scenario.event && !scenario.loadEvent) {
+                error += `* Missing 'event' or 'loadEvent' key for scenario with reference: '${scenario.reference}'`;
+            }
+        }
+        if (error) {
+            throw new Error(error);
+        }
     }
 }
 
@@ -278,7 +305,7 @@ export class FidelityRunner {
             console.log(`✅ Scenario ${event} passed!\n\trmse: ${rmse}`);
         }
 
-        if (config.saveOnFailure) {
+        if (config.saveOnFailure && screenshotToSave.length > 0) {
             console.log(`\n✏️  Saving failed scenario references...\n`);
 
             const results = await saveReferences(
@@ -351,7 +378,10 @@ export class FidelityRunner {
         let watching = false;
 
         async function processEvent(e: string) {
-            if (!eventToScenario.has(e)) return;
+            if (!eventToScenario.has(e)) {
+                console.warn(`❌ Received non-existing event: '${e}'`);
+                return;
+            }
 
             const screenshot = await page.screenshot({omitBackground: true});
             console.log(`Screenshot captured successfully for event: '${e}'`);
@@ -367,9 +397,14 @@ export class FidelityRunner {
         }
 
         await page.exposeFunction('fidelityScreenshot', processEvent);
+
+        /* The runner also supports scene loaded events, forwarded in the DOM.
+         * Each time a load event occurs, we convert it to a unique event name and
+         * forward the call to `fidelityScreenshot`. */
         await page.evaluate(() => {
             document.addEventListener('wle-scene-loaded', function (e) {
-                window.fidelityScreenshot(`${e.detail.filename}`);
+                // @ts-ignore
+                window.fidelityScreenshot(`wle-scene-loaded:${e.detail.filename}`);
             });
         });
 
