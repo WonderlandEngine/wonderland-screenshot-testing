@@ -261,6 +261,8 @@ export class FidelityRunner {
 
         try {
             for (const project of config.projects) {
+                /* We do not test multiple pages simultaneously to prevent
+                 * the animation loop to stop. */
                 success &&= await this._runTests(config, project, browser);
             }
         } catch (e) {
@@ -298,7 +300,7 @@ export class FidelityRunner {
 
         const screenshots = pngs.map((s) => (s instanceof Error ? s : parsePNG(s)));
 
-        console.log(`✏️  Comparing scenarios...\n`);
+        console.log(`\n✏️  Comparing scenarios...\n`);
 
         // @todo: Move into worker
         const screenshotToSave: number[] = [];
@@ -402,12 +404,13 @@ export class FidelityRunner {
             }
         });
         page.setViewport({width, height, deviceScaleFactor: 1});
+        page.setCacheEnabled(false);
 
         /* We do not use waitUntil: 'networkidle0' in order to setup
          * the event sink before the project is fully loaded. */
         await page.goto(`http://localhost:${config.port}/index.html`);
 
-        console.log(`\n📷 Capturing scenarios...\n`);
+        console.log(`📷 Capturing scenarios...\n`);
 
         let eventCount = 0;
         let watching = false;
