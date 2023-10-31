@@ -95,6 +95,14 @@ if (configFailed) {
     process.exit(1);
 }
 
+try {
+    await config.validate();
+} catch (e) {
+    console.error(`❌ Configuration error(s) found:\n`);
+    console.error(e);
+    process.exit(1);
+}
+
 if (config.watch && !config.scenarioForEvent(config.watch)) {
     console.error(`❌ Could not find scenario to watch: '${config.watch}`);
     process.exit(1);
