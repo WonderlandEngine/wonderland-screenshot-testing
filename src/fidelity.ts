@@ -1,5 +1,5 @@
 import {createServer} from 'node:http';
-import {mkdir, readFile, stat, writeFile} from 'node:fs/promises';
+import {readFile, stat, writeFile} from 'node:fs/promises';
 import {dirname, resolve} from 'node:path';
 
 import {PNG} from 'pngjs';
@@ -9,6 +9,7 @@ import handler from 'serve-handler';
 
 import {Image2d, compare} from './image.js';
 
+/** Dimensions. */
 interface Dimensions {
     width: number;
     height: number;
@@ -163,25 +164,27 @@ export class Config {
     }
 
     /**
-     * Validate the list of scenarios.
+     * Validate the configuration of scenarios.
      *
-     * @note **Throws** if any of the scenario validation fails.
-     *
-     * @param scenarios The list of scenarios to validate.
+     * @note **Throws** if the configuration is invalid.
      */
     async validate() {
-        for (const project of this.projects) {
-            const missingEventScenarios = project.scenarios
+        for (const {project, scenarios} of this.projects) {
+            /* Ensure all scenarios have an 'event' or 'loadEvent' key. */
+            const missingEventScenarios = scenarios
                 .map((s, i) => (s.event ? null : i))
                 .filter((v) => v !== null);
+
             if (missingEventScenarios.length > 0) {
                 throw new Error(
-                    `'${project.project}':` +
-                        `Missing 'event' or 'loadEvent' key for scenarios: ${missingEventScenarios}`
+                    `'${project}': Missing 'event' or 'loadEvent' key for scenarios: ${missingEventScenarios}`
                 );
             }
+
+            /* Throws if any of the 'reference' path folder doesn't exist */
+
             const folderSet = new Set<string>();
-            project.scenarios.forEach((s) => folderSet.add(dirname(s.reference)));
+            scenarios.forEach((s) => folderSet.add(dirname(s.reference)));
             const folders = Array.from(folderSet);
 
             const stats = await Promise.allSettled(folders.map(async (dir) => stat(dir)));
@@ -192,12 +195,11 @@ export class Config {
                 })
                 .filter((v) => v !== null);
 
-            if (errors.length > 0) {
-                throw new Error(
-                    `'${project.project}' contains a scenario(s) with missing reference folder:` +
-                        errors
-                );
-            }
+            if (!errors.length) continue;
+
+            throw new Error(
+                `'${project}' contains a scenario(s) with missing reference folder: ${errors}`
+            );
         }
     }
 }
