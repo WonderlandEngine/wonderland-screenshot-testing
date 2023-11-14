@@ -1,6 +1,6 @@
 import {createServer} from 'node:http';
-import {readFile, stat, writeFile} from 'node:fs/promises';
-import {dirname, resolve} from 'node:path';
+import {mkdir, readFile, stat, writeFile} from 'node:fs/promises';
+import {dirname, resolve, join, basename} from 'node:path';
 
 import {PNG} from 'pngjs';
 import {launch as puppeteerLauncher, Browser} from 'puppeteer-core';
@@ -8,6 +8,12 @@ import {Launcher} from 'chrome-launcher';
 import handler from 'serve-handler';
 
 import {Image2d, compare} from './image.js';
+
+export enum SaveMode {
+    None = 0,
+    OnFailure = 1,
+    All = 2,
+}
 
 /** Dimensions. */
 interface Dimensions {
@@ -82,22 +88,23 @@ async function loadReferences(scenarios: Scenario[]): Promise<(Image2d | Error)[
     return Promise.all(promises);
 }
 
-/**
- * Trigger save for a list of references.
- *
- * @param indices Index list of scenarios to save.
- * @param scenarios The entire list of scenarios.
- * @param pngs The entire list of pngs (one per scenario).
- * @returns A promise that resolves once all writes are done or failed.
- */
-async function saveReferences(indices: number[], scenarios: Scenario[], pngs: Buffer[]) {
-    const promises = [];
-    for (const index of indices) {
-        const data = pngs[index];
-        const path = scenarios[index].reference;
-        promises.push(writeFile(path, data as Buffer));
+function reduce<T>(indices: number[], array: T[]) {
+    const result = new Array(indices.length).fill(null);
+    for (let i = 0; i < indices.length; ++i) {
+        result[i] = array[indices[i]];
     }
-    return Promise.allSettled(promises);
+    return result;
+}
+
+async function mkdirp(path: string) {
+    try {
+        const s = await stat(path);
+        if (!s.isDirectory) {
+            throw new Error(`directory '${path}' already exists`);
+        }
+    } catch (e) {
+        return mkdir(path);
+    }
 }
 
 /**
@@ -117,6 +124,9 @@ export enum LogLevel {
  */
 export class Config {
     projects: Project[] = [];
+
+    output: string | null = null;
+    save: SaveMode = SaveMode.None;
 
     width = 480;
     height = 270;
@@ -270,7 +280,8 @@ export class FidelityRunner {
             for (const project of config.projects) {
                 /* We do not test multiple pages simultaneously to prevent
                  * the animation loop to stop. */
-                success &&= await this._runTests(config, project, browser);
+                const result = await this._runTests(config, project, browser);
+                success &&= result;
             }
         } catch (e) {
             throw e;
@@ -282,6 +293,15 @@ export class FidelityRunner {
         return success;
     }
 
+    /**
+     * Run the tests for a project.
+     *
+     * @param config The configuration to run.
+     * @param project The project to run the scenarios from.
+     * @param browser Browser instance.
+     * @returns A promise that resolves to `true` if all tests passed,
+     *     `false` otherwise.
+     */
     async _runTests(config: Config, project: Project, browser: Browser): Promise<boolean> {
         this._currentBasePath = resolve(project.path, 'deploy');
 
@@ -291,6 +311,10 @@ export class FidelityRunner {
         console.log(
             `📎 Running project ${project.project} with ${scenarios.length} scenarios\n`
         );
+
+        if (config.output) {
+            await mkdirp(config.output);
+        }
 
         /* Load references first to validate their size. */
         const references = await loadReferences(scenarios);
@@ -310,7 +334,7 @@ export class FidelityRunner {
         console.log(`\n✏️  Comparing scenarios...\n`);
 
         // @todo: Move into worker
-        const screenshotToSave: number[] = [];
+        const failed: number[] = [];
         let success = true;
         for (let i = 0; i < count; ++i) {
             const {event, tolerance, maxThreshold} = scenarios[i];
@@ -327,7 +351,7 @@ export class FidelityRunner {
             const reference = references[i];
             if (reference instanceof Error) {
                 success = false;
-                screenshotToSave.push(i);
+                failed.push(i);
                 console.log(
                     `❌ Scenario '${event}' failed with error:\n\t${reference.message}`
                 );
@@ -339,7 +363,7 @@ export class FidelityRunner {
             const maxFailed = res.max > maxThreshold;
             if (meanFailed || maxFailed) {
                 success = false;
-                screenshotToSave.push(i);
+                failed.push(i);
                 console.log(`❌ Scenario '${event}' failed!\n`);
                 console.log(`\trmse: ${res.rmse} | tolerance: ${tolerance}`);
                 console.log(`\tmax: ${res.max} | tolerance: ${maxThreshold}`);
@@ -349,26 +373,17 @@ export class FidelityRunner {
             console.log(`✅ Scenario ${event} passed!`);
         }
 
-        if (config.saveOnFailure && screenshotToSave.length > 0) {
-            console.log(`\n✏️  Saving failed scenario references...\n`);
-
-            const results = await saveReferences(
-                screenshotToSave,
-                scenarios,
-                pngs as Buffer[]
-            );
-            for (let i = 0; i < results.length; ++i) {
-                const res = results[i];
-                const path = summarizePath(scenarios[screenshotToSave[i]].reference);
-                if (res.status === 'rejected') {
-                    console.log(`❌ Failed to write png '${path}'\n\t${res.reason}`);
-                    continue;
-                }
-                console.log(`Screenshot '${path}' saved`);
+        switch (config.save) {
+            case SaveMode.OnFailure: {
+                const failedScenarios = reduce(failed, scenarios);
+                const failedPngs = reduce(failed, pngs);
+                await this._save(config, project, failedScenarios, failedPngs);
+                break;
             }
+            case SaveMode.All:
+                await this._save(config, project, scenarios, pngs);
+                break;
         }
-
-        console.log('\n');
 
         return success;
     }
@@ -431,7 +446,7 @@ export class FidelityRunner {
             }
 
             const screenshot = await page.screenshot({omitBackground: true});
-            console.log(`Screenshot captured successfully for event: '${e}'`);
+            console.log(`Event '${e}' received`);
 
             results[eventToScenario.get(e)] = screenshot;
 
@@ -469,5 +484,49 @@ export class FidelityRunner {
 
         await page.close();
         return results;
+    }
+
+    /**
+     * Save the captured references of a list of scenarios.
+     *
+     * @param config The configuration used to run the tests.
+     * @param project The project associated to the scenario to save.
+     * @param scenarios The list of scenarios to save.
+     * @param pngs The list of pngs (one per scenario).
+     * @returns A promise that resolves once all writes are done.
+     */
+    private async _save(
+        config: Config,
+        project: Project,
+        scenarios: Scenario[],
+        pngs: (Buffer | Error)[]
+    ) {
+        console.log(`\n✏️  Saving scenario references...\n`);
+
+        let output = null;
+        if (config.output) {
+            const folder = basename(project.path);
+            output = join(config.output, folder);
+            await mkdirp(output);
+        }
+
+        const promises = [];
+        for (let i = 0; i < scenarios.length; ++i) {
+            const data = pngs[i];
+            const scenario = scenarios[i];
+            const path = output
+                ? join(output, basename(scenario.reference))
+                : scenario.reference;
+            const summary = summarizePath(path);
+            promises.push(
+                writeFile(path, data as Buffer)
+                    .then(() => console.log(`Screenshot '${summary}' saved`))
+                    .catch((e) =>
+                        console.log(`❌ Failed to write png '${summary}'\n\t${e.reason}`)
+                    )
+            );
+        }
+
+        return Promise.all(promises);
     }
 }
