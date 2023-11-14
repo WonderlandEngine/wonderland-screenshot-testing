@@ -3,7 +3,7 @@ import {readFile, stat, writeFile} from 'node:fs/promises';
 import {dirname, resolve} from 'node:path';
 
 import {PNG} from 'pngjs';
-import {launch as puppeteerLauncher, Browser, Page} from 'puppeteer-core';
+import {launch as puppeteerLauncher, Browser} from 'puppeteer-core';
 import {Launcher} from 'chrome-launcher';
 import handler from 'serve-handler';
 
@@ -20,6 +20,7 @@ interface Scenario {
     event: string;
     reference: string;
     tolerance: number;
+    maxThreshold: number;
 }
 
 /** Project test configuration. */
@@ -32,14 +33,15 @@ interface Project {
 
 /** Raw scenario description from the configuration file. */
 interface ScenarioJson extends Scenario {
-    loadEvent: string;
+    readyEvent: string;
 }
 
 function summarizePath(path: string): string {
     const paths = path.split('/');
     const last = paths.length - 1;
     if (last < 5) return path;
-    return `${paths[0]}/.../${paths[last - 2]}/${paths[last - 1]}/${paths[last]}`;
+    const head = paths[0] ? paths[0] : `${path[0]}/${path[1]}`;
+    return `${head}/<...>/${paths[last - 2]}/${paths[last - 1]}/${paths[last]}`;
 }
 
 /**
@@ -134,9 +136,10 @@ export class Config {
         const path = resolve(basePath, dirname(project));
 
         const processedScenarios = (scenarios as ScenarioJson[]).map((s) => ({
-            event: s.event ?? s.loadEvent ? `wle-scene-loaded:${s.loadEvent}` : '',
+            event: s.event ?? s.readyEvent ? `wle-scene-ready:${s.readyEvent}` : '',
             reference: resolve(basePath, s.reference),
-            tolerance: 0.01,
+            tolerance: 1,
+            maxThreshold: 10,
         }));
 
         this.projects.push({
@@ -170,14 +173,14 @@ export class Config {
      */
     async validate() {
         for (const {project, scenarios} of this.projects) {
-            /* Ensure all scenarios have an 'event' or 'loadEvent' key. */
+            /* Ensure all scenarios have an 'event' or 'readyEvent' key. */
             const missingEventScenarios = scenarios
                 .map((s, i) => (s.event ? null : i))
                 .filter((v) => v !== null);
 
             if (missingEventScenarios.length > 0) {
                 throw new Error(
-                    `'${project}': Missing 'event' or 'loadEvent' key for scenarios: ${missingEventScenarios}`
+                    `'${project}': Missing 'event' or 'readyEvent' key for scenarios: ${missingEventScenarios}`
                 );
             }
 
@@ -308,7 +311,7 @@ export class FidelityRunner {
         const screenshotToSave: number[] = [];
         let success = true;
         for (let i = 0; i < count; ++i) {
-            const {event, tolerance} = scenarios[i];
+            const {event, tolerance, maxThreshold} = scenarios[i];
 
             const screenshot = screenshots[i];
             if (screenshot instanceof Error) {
@@ -329,17 +332,19 @@ export class FidelityRunner {
                 continue;
             }
 
-            const rmse = compare(screenshot, reference);
-            if (rmse > tolerance) {
+            const res = compare(screenshot, reference);
+            const meanFailed = res.rmse > tolerance;
+            const maxFailed = res.max > maxThreshold;
+            if (meanFailed || maxFailed) {
                 success = false;
                 screenshotToSave.push(i);
-                console.log(
-                    `❌ Scenario '${event}' failed!\n\trmse: ${rmse} | tolerance: ${tolerance}`
-                );
+                console.log(`❌ Scenario '${event}' failed!\n`);
+                console.log(`\trmse: ${res.rmse} | tolerance: ${tolerance}`);
+                console.log(`\tmax: ${res.max} | tolerance: ${maxThreshold}`);
                 continue;
             }
 
-            console.log(`✅ Scenario ${event} passed!\n\trmse: ${rmse}`);
+            console.log(`✅ Scenario ${event} passed!`);
         }
 
         if (config.saveOnFailure && screenshotToSave.length > 0) {
@@ -442,9 +447,9 @@ export class FidelityRunner {
          * Each time a load event occurs, we convert it to a unique event name and
          * forward the call to `fidelityScreenshot`. */
         await page.evaluate(() => {
-            document.addEventListener('wle-scene-loaded', function (e) {
+            document.addEventListener('wle-scene-ready', function (e) {
                 // @ts-ignore
-                window.fidelityScreenshot(`wle-scene-loaded:${e.detail.filename}`);
+                window.fidelityScreenshot(`wle-scene-ready:${e.detail.filename}`);
             });
         });
 

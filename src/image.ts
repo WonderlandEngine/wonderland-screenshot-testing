@@ -34,12 +34,15 @@ export function compare(image: Image2d, expected: Image2d) {
 
     const pixels = width * height;
     let squareSum = 0;
+    let max = 0;
     for (let i = 0; i < pixels; ++i) {
         /* For now, we use a basic error metric. We could eventually allow
          * using a perceptual metric. */
-        squareSum += basicSquareErrorDistance(image.data, expected.data, i * 4);
+        const dist = basicSquareErrorDistance(image.data, expected.data, i * 4);
+        max = dist > max ? dist : max;
+        squareSum += dist;
     }
 
     /* Basic rmse for now */
-    return Math.sqrt(squareSum / pixels);
+    return {rmse: Math.sqrt(squareSum / pixels), max};
 }
