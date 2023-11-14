@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 
-import {join} from 'node:path';
+import {join, resolve} from 'node:path';
 import {stat, readdir} from 'node:fs/promises';
 import {parseArgs} from 'node:util';
 
-import {FidelityRunner, Config} from './fidelity.js';
+import {FidelityRunner, Config, SaveMode} from './fidelity.js';
 
 interface Arguments {
     help?: boolean;
     watch?: string;
+    output?: string;
+    save?: boolean;
     'save-on-failure'?: boolean;
 }
 
@@ -50,6 +52,8 @@ try {
         options: {
             help: {type: 'boolean', short: 'h'},
             watch: {type: 'string', short: 'w'},
+            output: {type: 'string', short: 'o'},
+            save: {type: 'boolean', short: 's'},
             'save-on-failure': {type: 'boolean'},
         },
         allowPositionals: true,
@@ -79,6 +83,9 @@ if ((await stat(configPath)).isDirectory()) {
 const config = new Config();
 config.saveOnFailure = args['save-on-failure'] ?? false;
 config.watch = args.watch ?? null;
+config.output = args.output ? resolve(args.output) : null;
+config.save = args['save-on-failure'] ? SaveMode.OnFailure : SaveMode.None;
+config.save = args.save ? SaveMode.All : config.save;
 
 const promises = await Promise.allSettled(configFiles.map((c) => config.add(c)));
 let configFailed = false;
