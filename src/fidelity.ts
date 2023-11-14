@@ -40,8 +40,10 @@ function summarizePath(path: string): string {
     const paths = path.split('/');
     const last = paths.length - 1;
     if (last < 5) return path;
-    const head = paths[0] ? paths[0] : `${path[0]}/${path[1]}`;
-    return `${head}/<...>/${paths[last - 2]}/${paths[last - 1]}/${paths[last]}`;
+
+    const head = paths[0] ? paths[0] : `${paths[0]}/${paths[1]}`;
+    const tail = `${paths[last - 2]}/${paths[last - 1]}/${paths[last]}`;
+    return `${head}/<...>/${tail}`;
 }
 
 /**
@@ -194,7 +196,7 @@ export class Config {
             const errors = stats
                 .map((r, i) => {
                     if (r.status === 'fulfilled') return null;
-                    return `\n- Missing ${summarizePath(folders[i])} folder`;
+                    return `\n- Missing ${summarizePath(folders[i])}`;
                 })
                 .filter((v) => v !== null);
 
