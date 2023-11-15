@@ -150,8 +150,8 @@ export class Config {
         const processedScenarios = (scenarios as ScenarioJson[]).map((s) => ({
             event: s.event ?? s.readyEvent ? `wle-scene-ready:${s.readyEvent}` : '',
             reference: resolve(basePath, s.reference),
-            tolerance: 1,
-            maxThreshold: 10,
+            tolerance: s.tolerance ?? 1,
+            maxThreshold: s.maxThreshold ?? 16,
         }));
 
         this.projects.push({
@@ -501,6 +501,8 @@ export class FidelityRunner {
         scenarios: Scenario[],
         pngs: (Buffer | Error)[]
     ) {
+        if (!scenarios.length) return;
+
         console.log(`\n✏️  Saving scenario references...\n`);
 
         let output = null;
