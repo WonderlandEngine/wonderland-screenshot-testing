@@ -1,5 +1,5 @@
 import {readFile, stat} from 'node:fs/promises';
-import {dirname, resolve} from 'node:path';
+import {basename, dirname, resolve} from 'node:path';
 
 import {LogLevel} from './fidelity.js';
 import {summarizePath} from './utils.js';
@@ -24,8 +24,8 @@ export interface Scenario {
 
 /** Project test configuration. */
 export interface Project {
-    project: string;
     path: string;
+    name: string;
     timeout: number;
     scenarios: Scenario[];
 }
@@ -75,23 +75,23 @@ export class Config {
         const data = await readFile(resolve(configPath), 'utf8');
         const json = JSON.parse(data) as Project;
 
-        const {project, timeout = 60000} = json;
+        const {timeout = 60000} = json;
         const scenarios = Array.isArray(json.scenarios) ? json.scenarios : [json.scenarios];
 
-        const basePath = resolve(dirname(configPath));
-        const path = resolve(basePath, dirname(project));
+        const path = resolve(dirname(configPath));
+        const name = basename(path);
 
         const processedScenarios = (scenarios as ScenarioJson[]).map((s) => ({
             event: s.event ?? s.readyEvent ? `wle-scene-ready:${s.readyEvent}` : '',
-            reference: resolve(basePath, s.reference),
+            reference: resolve(path, s.reference),
             tolerance: s.tolerance ?? 1,
             maxThreshold: s.maxThreshold ?? 16,
         }));
 
         this.projects.push({
-            project,
             timeout,
             path,
+            name,
             scenarios: processedScenarios,
         });
     }
@@ -116,7 +116,7 @@ export class Config {
      * @note **Throws** if the configuration is invalid.
      */
     async validate() {
-        for (const {project, scenarios} of this.projects) {
+        for (const {name, scenarios} of this.projects) {
             /* Ensure all scenarios have an 'event' or 'readyEvent' key. */
             const missingEventScenarios = scenarios
                 .map((s, i) => (s.event ? null : i))
@@ -124,7 +124,7 @@ export class Config {
 
             if (missingEventScenarios.length > 0) {
                 throw new Error(
-                    `'${project}': Missing 'event' or 'readyEvent' key for scenarios: ${missingEventScenarios}`
+                    `'${name}': Missing 'event' or 'readyEvent' key for scenarios: ${missingEventScenarios}`
                 );
             }
 
@@ -145,7 +145,7 @@ export class Config {
             if (!errors.length) continue;
 
             throw new Error(
-                `'${project}' contains a scenario(s) with missing reference folder: ${errors}`
+                `'${name}' contains a scenario(s) with missing reference folder: ${errors}`
             );
         }
     }

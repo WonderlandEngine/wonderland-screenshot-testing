@@ -84,7 +84,11 @@ Every project must have a configuration file:
             // Default loading event: Wait for `MyScene.bin` to load
             "readyEvent": "MyScene.bin",
             // Reference image to compare against
-            "reference": "./scene-loaded.png"
+            "reference": "./scene-loaded.png",
+            // RMSE tolerance for the entire image
+            "tolerance": 4,
+            // Maximum authorized error per-pixel
+            "maxThreshold": 16
         },
         {
             // Custom event sent from the application
