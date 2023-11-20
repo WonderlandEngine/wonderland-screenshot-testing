@@ -5,6 +5,7 @@
   "license": "ISC",
   "description": "",
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "type": "module",
   "bin": {
     "wle-screenshot-testing": "./dist/cli.js"
