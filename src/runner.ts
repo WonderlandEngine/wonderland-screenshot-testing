@@ -315,15 +315,15 @@ export class ScreenshotRunner {
             watching = e === config.watch;
         }
 
-        await page.exposeFunction('fidelityScreenshot', processEvent);
+        await page.exposeFunction('testScreenshot', processEvent);
 
         /* The runner also supports scene loaded events, forwarded in the DOM.
          * Each time a load event occurs, we convert it to a unique event name and
-         * forward the call to `fidelityScreenshot`. */
+         * forward the call to `testScreenshot`. */
         await page.evaluate(() => {
             document.addEventListener('wle-scene-ready', function (e) {
                 // @ts-ignore
-                window.fidelityScreenshot(`wle-scene-ready:${e.detail.filename}`);
+                window.testScreenshot(`wle-scene-ready:${e.detail.filename}`);
             });
         });
 

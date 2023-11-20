@@ -123,13 +123,13 @@ _Application_
  * The id must match the `event` field in the configuration. */
 
 player.shoot();
-await window.fidelityScreenshot('on-shoot');
+await window.testScreenshot('on-shoot');
 
 game.showGameOver();
-await window.fidelityScreenshot('gameover');
+await window.testScreenshot('gameover');
 ```
 
-The `fidelityScreenshot` method returns a [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise). You
+The `testScreenshot` method returns a [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise). You
 must wait until the promise resolves before taking another screenshot.
 
 ### Test Entry Point
@@ -141,7 +141,7 @@ This custom entry point can then reference components for the sole purpose of te
 
 ```js
 if (isPlayerShooting()) {
-    await window.fidelityScreenshot('on-shoot');
+    await window.testScreenshot('on-shoot');
     console.log('Test screenshot captured!');
 }
 ```
