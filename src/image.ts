@@ -1,8 +1,11 @@
-export interface Image2d {
+export interface Dimensions {
     width: number;
     height: number;
-    data: Uint8ClampedArray;
 }
+
+export type Image2d = Dimensions & {
+    data: Uint8ClampedArray;
+};
 
 function basicSquareErrorDistance(
     data: Uint8ClampedArray,

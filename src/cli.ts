@@ -4,7 +4,8 @@ import {join, resolve} from 'node:path';
 import {stat, readdir} from 'node:fs/promises';
 import {parseArgs} from 'node:util';
 
-import {FidelityRunner, Config, SaveMode} from './fidelity.js';
+import {Config, SaveMode} from './config.js';
+import {FidelityRunner} from './fidelity.js';
 
 interface Arguments {
     help?: boolean;
@@ -81,7 +82,6 @@ if ((await stat(configPath)).isDirectory()) {
 }
 
 const config = new Config();
-config.saveOnFailure = args['save-on-failure'] ?? false;
 config.watch = args.watch ?? null;
 config.output = args.output ? resolve(args.output) : null;
 config.save = args['save-on-failure'] ? SaveMode.OnFailure : SaveMode.None;
