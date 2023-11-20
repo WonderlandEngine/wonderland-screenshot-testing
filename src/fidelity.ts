@@ -167,9 +167,7 @@ export class FidelityRunner {
         const scenarios = project.scenarios;
         const count = scenarios.length;
 
-        console.log(
-            `📎 Running project ${project.project} with ${scenarios.length} scenarios\n`
-        );
+        console.log(`\n📎 Running project ${project.name} with ${count} scenarios\n`);
 
         if (config.output) {
             await mkdirp(config.output);
@@ -190,7 +188,7 @@ export class FidelityRunner {
 
         const screenshots = pngs.map((s) => (s instanceof Error ? s : parsePNG(s)));
 
-        console.log(`\n✏️  Comparing scenarios...\n`);
+        console.log(`\n✏️  Comparing scenarios...`);
 
         // @todo: Move into worker
         const failed: number[] = [];
@@ -223,7 +221,7 @@ export class FidelityRunner {
             if (meanFailed || maxFailed) {
                 success = false;
                 failed.push(i);
-                console.log(`❌ Scenario '${event}' failed!\n`);
+                console.log(`❌ Scenario '${event}' failed!`);
                 console.log(`\trmse: ${res.rmse} | tolerance: ${tolerance}`);
                 console.log(`\tmax: ${res.max} | tolerance: ${maxThreshold}`);
                 continue;
@@ -293,7 +291,7 @@ export class FidelityRunner {
          * the event sink before the project is fully loaded. */
         await page.goto(`http://localhost:${config.port}/index.html`);
 
-        console.log(`📷 Capturing scenarios...\n`);
+        console.log(`📷 Capturing scenarios...`);
 
         let eventCount = 0;
         let watching = false;

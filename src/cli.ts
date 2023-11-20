@@ -81,7 +81,7 @@ const configPath = positionals[0] ?? CONFIG_NAME;
 let configFiles: string[] = [];
 if ((await stat(configPath)).isDirectory()) {
     configFiles = (await readdir(configPath, {recursive: true}))
-        .filter((v) => v.endsWith('.fidelity.json'))
+        .filter((v) => v.endsWith(CONFIG_NAME))
         .map((v) => join(configPath, v));
 } else {
     configFiles.push(configPath);
