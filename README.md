@@ -26,7 +26,7 @@ Add a test script in the `package.json` file:
 ```json
 {
     "scripts": {
-        "test": "wle-fidelity path/to/config.fidelity.json"
+        "test": "wle-screenshot-testing path/to/config.screenshot.json"
     }
 }
 ```
@@ -34,7 +34,7 @@ Add a test script in the `package.json` file:
 Alternatively, you can reference the binary using:
 
 ```sh
-./node_modules/.bin/wle-fidely path/to/config.fidelity.json
+./node_modules/.bin/wle-fidely path/to/config.screenshot.json
 ```
 
 For more information about the CLI, have a look at the [CLI Arguments](#cli-arguments) section.
@@ -58,10 +58,10 @@ _config.screenshot.json_
 
 ```json
 {
-    "scenarios": {
+    "scenarios": [{
         "readyEvent": "MyWonderland.bin",
         "reference": "./test/reference.png"
-    }
+    }]
 }
 ```
 
@@ -74,7 +74,7 @@ For more information about the configuration, have a look at the [Configuration 
 
 Every project must have a configuration file:
 
-```json
+```js
 {
     // If this timeout is reached, the test suite will fail.
     "timeout": 60000,
@@ -88,7 +88,7 @@ Every project must have a configuration file:
             // RMSE tolerance for the entire image
             "tolerance": 4,
             // Maximum authorized error per-pixel
-            "maxThreshold": 16
+            "perPixelTolerance": 16
         },
         {
             // Custom event sent from the application
@@ -123,13 +123,13 @@ _Application_
  * The id must match the `event` field in the configuration. */
 
 player.shoot();
-await window.fidelityScreenshot('on-shoot');
+await window.testScreenshot('on-shoot');
 
 game.showGameOver();
-await window.fidelityScreenshot('gameover');
+await window.testScreenshot('gameover');
 ```
 
-The `fidelityScreenshot` method returns a [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise). You
+The `testScreenshot` method returns a [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise). You
 must wait until the promise resolves before taking another screenshot.
 
 ### Test Entry Point
@@ -141,7 +141,7 @@ This custom entry point can then reference components for the sole purpose of te
 
 ```js
 if (isPlayerShooting()) {
-    await window.fidelityScreenshot('on-shoot');
+    await window.testScreenshot('on-shoot');
     console.log('Test screenshot captured!');
 }
 ```

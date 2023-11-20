@@ -79,9 +79,9 @@ export enum LogLevel {
 }
 
 /**
- * Fidelity test suite runner.
+ * Screenshot test suite runner.
  *
- * The fidelity runner is in charge of:
+ * The screenshot runner is in charge of:
  *     - Locating the browser to run the tests in
  *     - Handling http requests
  *     - Running the project and reacting to screenshot events
@@ -93,13 +93,13 @@ export enum LogLevel {
  * const config = new Config();
  * await config.add('path/to/project');
  *
- * const runner = new FidelityRunner();
+ * const runner = new ScreenshotRunner();
  * const success = runner.run(config);
  *
  * console.log(success ? 'Tests passed!' : 'Some test(s) failed!');
  * ```
  */
-export class FidelityRunner {
+export class ScreenshotRunner {
     /** Base path to serve. @hidden */
     _currentBasePath = '';
 
@@ -194,7 +194,7 @@ export class FidelityRunner {
         const failed: number[] = [];
         let success = true;
         for (let i = 0; i < count; ++i) {
-            const {event, tolerance, maxThreshold} = scenarios[i];
+            const {event, tolerance, perPixelTolerance} = scenarios[i];
 
             const screenshot = screenshots[i];
             if (screenshot instanceof Error) {
@@ -217,13 +217,13 @@ export class FidelityRunner {
 
             const res = compare(screenshot, reference);
             const meanFailed = res.rmse > tolerance;
-            const maxFailed = res.max > maxThreshold;
+            const maxFailed = res.max > perPixelTolerance;
             if (meanFailed || maxFailed) {
                 success = false;
                 failed.push(i);
                 console.log(`❌ Scenario '${event}' failed!`);
                 console.log(`\trmse: ${res.rmse} | tolerance: ${tolerance}`);
-                console.log(`\tmax: ${res.max} | tolerance: ${maxThreshold}`);
+                console.log(`\tmax: ${res.max} | tolerance: ${perPixelTolerance}`);
                 continue;
             }
 
@@ -315,15 +315,15 @@ export class FidelityRunner {
             watching = e === config.watch;
         }
 
-        await page.exposeFunction('fidelityScreenshot', processEvent);
+        await page.exposeFunction('testScreenshot', processEvent);
 
         /* The runner also supports scene loaded events, forwarded in the DOM.
          * Each time a load event occurs, we convert it to a unique event name and
-         * forward the call to `fidelityScreenshot`. */
+         * forward the call to `testScreenshot`. */
         await page.evaluate(() => {
             document.addEventListener('wle-scene-ready', function (e) {
                 // @ts-ignore
-                window.fidelityScreenshot(`wle-scene-ready:${e.detail.filename}`);
+                window.testScreenshot(`wle-scene-ready:${e.detail.filename}`);
             });
         });
 
