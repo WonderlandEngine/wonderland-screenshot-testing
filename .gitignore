@@ -1,6 +1,3 @@
-# Build
-dist/
-
 # Dependency directories
 node_modules/
 jspm_packages/

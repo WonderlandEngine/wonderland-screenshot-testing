@@ -4,7 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "nodenext",
     "outDir": "dist",
-    "declaration": false,
+    "declaration": true,
     "newLine": "LF",
     "allowJs": false,
     "strict": true
