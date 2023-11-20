@@ -5,7 +5,7 @@ import {stat, readdir} from 'node:fs/promises';
 import {parseArgs} from 'node:util';
 
 import {Config, SaveMode} from './config.js';
-import {FidelityRunner} from './fidelity.js';
+import {ScreenshotRunner} from './runner.js';
 
 interface Arguments {
     /** Print help. */
@@ -24,7 +24,7 @@ interface Arguments {
  * Constants
  */
 
-const COMMAND_NAME = 'wle-fidelity';
+const COMMAND_NAME = 'wle-screenshot-testing';
 const CONFIG_NAME = 'config.screenshot.json';
 
 /**
@@ -35,7 +35,7 @@ const CONFIG_NAME = 'config.screenshot.json';
 function printHelp(summary = false) {
     if (!summary) {
         console.log(
-            `${COMMAND_NAME}\n\n` + 'Fidelity test suite for WonderlandEngine projects\n'
+            `${COMMAND_NAME}\n\n` + 'Screenshot test suite for WonderlandEngine projects\n'
         );
     }
     console.log(`USAGE: ${COMMAND_NAME} <PATH>`);
@@ -121,6 +121,6 @@ if (config.watch && !config.scenarioForEvent(config.watch)) {
     process.exit(1);
 }
 
-const runner = new FidelityRunner();
+const runner = new ScreenshotRunner();
 const success = await runner.run(config);
 process.exit(success ? 0 : 1);

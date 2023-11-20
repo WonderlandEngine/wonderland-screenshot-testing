@@ -26,7 +26,7 @@ Add a test script in the `package.json` file:
 ```json
 {
     "scripts": {
-        "test": "wle-fidelity path/to/config.fidelity.json"
+        "test": "wle-screenshot-testing path/to/config.screenshot.json"
     }
 }
 ```
@@ -34,7 +34,7 @@ Add a test script in the `package.json` file:
 Alternatively, you can reference the binary using:
 
 ```sh
-./node_modules/.bin/wle-fidely path/to/config.fidelity.json
+./node_modules/.bin/wle-fidely path/to/config.screenshot.json
 ```
 
 For more information about the CLI, have a look at the [CLI Arguments](#cli-arguments) section.
@@ -58,10 +58,10 @@ _config.screenshot.json_
 
 ```json
 {
-    "scenarios": {
+    "scenarios": [{
         "readyEvent": "MyWonderland.bin",
         "reference": "./test/reference.png"
-    }
+    }]
 }
 ```
 
@@ -88,7 +88,7 @@ Every project must have a configuration file:
             // RMSE tolerance for the entire image
             "tolerance": 4,
             // Maximum authorized error per-pixel
-            "maxThreshold": 16
+            "perPixelTolerance": 16
         },
         {
             // Custom event sent from the application

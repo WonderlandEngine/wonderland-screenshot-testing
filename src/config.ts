@@ -1,7 +1,7 @@
 import {readFile, stat} from 'node:fs/promises';
 import {basename, dirname, resolve} from 'node:path';
 
-import {LogLevel} from './fidelity.js';
+import {LogLevel} from './runner.js';
 import {summarizePath} from './utils.js';
 
 /** Save mode configuration. */
@@ -19,7 +19,7 @@ export interface Scenario {
     event: string;
     reference: string;
     tolerance: number;
-    maxThreshold: number;
+    perPixelTolerance: number;
 }
 
 /** Project test configuration. */
@@ -36,7 +36,7 @@ interface ScenarioJson extends Scenario {
 }
 
 /**
- * Configuration for {@link FidelityRunner}.
+ * Configuration for {@link ScreenshotRunner}.
  */
 export class Config {
     /** List of projects to test */
@@ -85,7 +85,7 @@ export class Config {
             event: s.event ?? s.readyEvent ? `wle-scene-ready:${s.readyEvent}` : '',
             reference: resolve(path, s.reference),
             tolerance: s.tolerance ?? 1,
-            maxThreshold: s.maxThreshold ?? 16,
+            perPixelTolerance: s.perPixelTolerance ?? 16,
         }));
 
         this.projects.push({
