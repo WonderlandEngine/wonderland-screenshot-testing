@@ -8,10 +8,15 @@ import {Config, SaveMode} from './config.js';
 import {FidelityRunner} from './fidelity.js';
 
 interface Arguments {
+    /** Print help. */
     help?: boolean;
+    /** Watch a specific event. */
     watch?: string;
+    /** Output folder. */
     output?: string;
+    /** Save all captured screenshots. */
     save?: boolean;
+    /** Save screenshots associated to failed tests. */
     'save-on-failure'?: boolean;
 }
 
@@ -20,6 +25,7 @@ interface Arguments {
  */
 
 const COMMAND_NAME = 'wle-fidelity';
+const CONFIG_NAME = 'config.screenshot.json';
 
 /**
  * Utils
@@ -71,7 +77,7 @@ if (args.help) {
 }
 
 /* Find all config files to run. */
-const configPath = positionals[0] ?? './config.fidelity.json';
+const configPath = positionals[0] ?? CONFIG_NAME;
 let configFiles: string[] = [];
 if ((await stat(configPath)).isDirectory()) {
     configFiles = (await readdir(configPath, {recursive: true}))

@@ -5,9 +5,9 @@
   <img alt="Wonderland Engine Logo">
 </picture>
 
-# Wonderland Engine Fidelity Tests
+# Wonderland Screenshot Testing
 
-Fidelity tests runner helping to prevent visual regressions in Wonderland Engine projects.
+Tests runner helping to prevent visual regressions in Wonderland Engine projects.
 
 Learn more about Wonderland Engine at [https://wonderlandengine.com](https://wonderlandengine.com).
 
@@ -16,9 +16,9 @@ Learn more about Wonderland Engine at [https://wonderlandengine.com](https://won
 Install via `npm` or `yarn`:
 
 ```sh
-npm i --save-dev @wonderlandengine/fidelity-test-runner
+npm i --save-dev @wonderlandengine/screenshot-testing
 # or:
-yarn add @wonderlandengine/fidelity-test-runner --D
+yarn add @wonderlandengine/screenshot-testing --D
 ```
 
 Add a test script in the `package.json` file:
@@ -37,18 +37,57 @@ Alternatively, you can reference the binary using:
 ./node_modules/.bin/wle-fidely path/to/config.fidelity.json
 ```
 
-### Configuration File
+For more information about the CLI, have a look at the [CLI Arguments](#cli-arguments) section.
+
+By default, the **CLI** looks for a file named `config.screenshot.json` in the working directory.
+
+## Basic Example
+
+A simple setup contains a reference to compare to (`reference.png`), and a configuration file (`config.screenshot.json`):
+
+```sh
+MyWonderland.wlp
+config.screenshot.json
+deploy/
+js/
+test/
+    reference.png
+```
+
+_config.screenshot.json_
 
 ```json
 {
-    "project": "./path/to/Project.wlp",
+    "scenarios": {
+        "readyEvent": "MyWonderland.bin",
+        "reference": "./test/reference.png"
+    }
+}
+```
+
+The `readyEvent` is used to take the screenshot once the scene `MyWonderland.bin`
+is loaded. The screenshot is then compared to the file `./test/reference.png`.
+
+For more information about the configuration, have a look at the [Configuration File](#configuration-file) section.
+
+## Configuration File
+
+Every project must have a configuration file:
+
+```json
+{
+    // If this timeout is reached, the test suite will fail.
     "timeout": 60000,
+
     "scenarios": [
         {
-            "event": "post-scene-load",
-            "reference": "./scene-loaded-correctly.png"
+            // Default loading event: Wait for `MyScene.bin` to load
+            "readyEvent": "MyScene.bin",
+            // Reference image to compare against
+            "reference": "./scene-loaded.png"
         },
         {
+            // Custom event sent from the application
             "event": "on-shoot",
             "reference": "./shoot.png"
         }
@@ -56,34 +95,38 @@ Alternatively, you can reference the binary using:
 }
 ```
 
-* `event`: Event coming from the project, at runtime. For more information,
+The test suite is made of multiple **scenarios**, associating a screenshot event
+to a reference image:
+
+* `readyEvent`: Event sent after a scene load
+* `event`: Programmatic custom event coming from the project. For more information,
 have a look at the [Project section](#project)
 * `reference`: Path to the reference file, i.e., the ground truth image to compare against
 
-### CLI Arguments
+## Custom Events
 
-|Argument|Type|Description|
-|:--:|:--:|:--------------------|
-|**-w, --watch**|_String_|Event to watch, i.e., to freeze the runner on|
-|**--save-on-failure**|_Flag_|Overwrites failed reference(s) with the test(s) screenshot|
-
-## Project
-
-Screenshots are taken on an event-based fashion. The runner works in **three** steps:
+Screenshots are taken in an event-based fashion. The runner works in **three** steps:
 1. Load and run the project
-2. Listen for events coming from the project (on the browser side)
-3. Compare screenshot captured upon event to their reference
+2. Listen for events coming from the project
+3. Compare screenshots captured upon event to their reference
 
 You can send events in your running application using:
 
+_Application_
+
 ```js
 /* The argument represents the event id.
- * The id must match an entry in the configuration. */
+ * The id must match the `event` field in the configuration. */
+
+player.shoot();
 await window.fidelityScreenshot('on-shoot');
+
+game.showGameOver();
+await window.fidelityScreenshot('gameover');
 ```
 
 The `fidelityScreenshot` method returns a [Promise](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise). You
-must wait until the promise resolve before taking another screenshot.
+must wait until the promise resolves before taking another screenshot.
 
 ### Test Entry Point
 
@@ -93,17 +136,17 @@ with the test runner.
 This custom entry point can then reference components for the sole purpose of testing, e.g.,
 
 ```js
-import {Component} from '@wonderlandengine/api';
-
-export class FidelityTestComponent extends Component {
-
-    update() {
-        if (isPlayerShooting()) {
-            window.fidelityScreenshot('on-shoot').then(() => {
-                console.log('Test screenshot captured!');
-            });
-        }
-    }
-
+if (isPlayerShooting()) {
+    await window.fidelityScreenshot('on-shoot');
+    console.log('Test screenshot captured!');
 }
 ```
+
+## CLI Arguments
+
+|Argument|Type|Description|
+|:--:|:--:|:--------------------|
+|**--save-on-failure**|_Flag_|Overwrites failed reference(s) with the test(s) screenshot|
+|**--save**|_Flag_|Save every screenshot|
+|**-o, --output**|_Path_|Output folder for saved screenshots. References overwritten by default|
+|**-w, --watch**|_String_|Event to watch, i.e., to freeze the runner on|
