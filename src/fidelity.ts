@@ -1,56 +1,15 @@
 import {createServer} from 'node:http';
 import {mkdir, readFile, stat, writeFile} from 'node:fs/promises';
-import {dirname, resolve, join, basename} from 'node:path';
+import {resolve, join, basename} from 'node:path';
 
 import {PNG} from 'pngjs';
 import {launch as puppeteerLauncher, Browser} from 'puppeteer-core';
 import {Launcher} from 'chrome-launcher';
 import handler from 'serve-handler';
 
-import {Image2d, compare} from './image.js';
-
-export enum SaveMode {
-    None = 0,
-    OnFailure = 1,
-    All = 2,
-}
-
-/** Dimensions. */
-interface Dimensions {
-    width: number;
-    height: number;
-}
-
-/** Test scenario, mapping the runtime event to a reference. */
-interface Scenario {
-    event: string;
-    reference: string;
-    tolerance: number;
-    maxThreshold: number;
-}
-
-/** Project test configuration. */
-interface Project {
-    project: string;
-    path: string;
-    timeout: number;
-    scenarios: Scenario[];
-}
-
-/** Raw scenario description from the configuration file. */
-interface ScenarioJson extends Scenario {
-    readyEvent: string;
-}
-
-function summarizePath(path: string): string {
-    const paths = path.split('/');
-    const last = paths.length - 1;
-    if (last < 5) return path;
-
-    const head = paths[0] ? paths[0] : `${paths[0]}/${paths[1]}`;
-    const tail = `${paths[last - 2]}/${paths[last - 1]}/${paths[last]}`;
-    return `${head}/<...>/${tail}`;
-}
+import {Config, Scenario, Project, SaveMode} from './config.js';
+import {Dimensions, Image2d, compare} from './image.js';
+import {summarizePath} from './utils.js';
 
 /**
  * Parse the buffer as a png.
@@ -117,106 +76,6 @@ export enum LogLevel {
     Warn = 1 << 1,
     /** Display error logs */
     Error = 1 << 2,
-}
-
-/**
- * Configuration for {@link FidelityRunner}.
- */
-export class Config {
-    projects: Project[] = [];
-
-    output: string | null = null;
-    save: SaveMode = SaveMode.None;
-
-    width = 480;
-    height = 270;
-
-    saveOnFailure = false;
-    port: number = 8080;
-    watch: string | null = null;
-    log: LogLevel = LogLevel.Warn & LogLevel.Error;
-
-    async add(configPath: string) {
-        const configAbsPath = resolve(configPath);
-        const data = await readFile(resolve(configPath), 'utf8');
-        const json = JSON.parse(data) as Project;
-
-        const {project, timeout = 60000} = json;
-        const scenarios = Array.isArray(json.scenarios) ? json.scenarios : [json.scenarios];
-
-        const basePath = resolve(dirname(configPath));
-        const path = resolve(basePath, dirname(project));
-
-        const processedScenarios = (scenarios as ScenarioJson[]).map((s) => ({
-            event: s.event ?? s.readyEvent ? `wle-scene-ready:${s.readyEvent}` : '',
-            reference: resolve(basePath, s.reference),
-            tolerance: s.tolerance ?? 1,
-            maxThreshold: s.maxThreshold ?? 16,
-        }));
-
-        this.projects.push({
-            project,
-            timeout,
-            path,
-            scenarios: processedScenarios,
-        });
-
-        return configAbsPath;
-    }
-
-    /**
-     * Get the scenario associated to an event.
-     *
-     * @param event The event.
-     * @returns The scenario if found, `null` otherwise.
-     */
-    scenarioForEvent(event: string): Scenario | null {
-        for (const project of this.projects) {
-            const scenario = project.scenarios.find((s) => s.event === event);
-            if (scenario) return scenario;
-        }
-        return null;
-    }
-
-    /**
-     * Validate the configuration of scenarios.
-     *
-     * @note **Throws** if the configuration is invalid.
-     */
-    async validate() {
-        for (const {project, scenarios} of this.projects) {
-            /* Ensure all scenarios have an 'event' or 'readyEvent' key. */
-            const missingEventScenarios = scenarios
-                .map((s, i) => (s.event ? null : i))
-                .filter((v) => v !== null);
-
-            if (missingEventScenarios.length > 0) {
-                throw new Error(
-                    `'${project}': Missing 'event' or 'readyEvent' key for scenarios: ${missingEventScenarios}`
-                );
-            }
-
-            /* Throws if any of the 'reference' path folder doesn't exist */
-
-            const folderSet = new Set<string>();
-            scenarios.forEach((s) => folderSet.add(dirname(s.reference)));
-            const folders = Array.from(folderSet);
-
-            const stats = await Promise.allSettled(folders.map(async (dir) => stat(dir)));
-            const errors = stats
-                .map((r, i) => {
-                    if (r.status === 'fulfilled') return null;
-                    return `\n- Missing ${summarizePath(folders[i])}`;
-                })
-                .filter((v) => v !== null);
-
-            if (!errors.length) continue;
-
-            throw new Error(
-                `'${project}' contains a scenario(s) with missing reference folder: ${errors}`
-            );
-        }
-    }
 }
 
 /**
