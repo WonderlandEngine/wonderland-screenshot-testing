@@ -74,7 +74,7 @@ For more information about the configuration, have a look at the [Configuration 
 
 Every project must have a configuration file:
 
-```json
+```js
 {
     // If this timeout is reached, the test suite will fail.
     "timeout": 60000,
