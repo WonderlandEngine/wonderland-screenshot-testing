@@ -1,7 +1,12 @@
-import { readFile, stat } from 'node:fs/promises';
-import { basename, dirname, resolve } from 'node:path';
+import { readFile, readdir, stat } from 'node:fs/promises';
+import { basename, dirname, join, resolve } from 'node:path';
 import { LogLevel } from './runner.js';
-import { summarizePath } from './utils.js';
+import { settlePromises, summarizePath } from './utils.js';
+/**
+ * Constants
+ */
+/** Default configuration filename. */
+export const CONFIG_NAME = 'config.screenshot.json';
 /** Save mode configuration. */
 export var SaveMode;
 (function (SaveMode) {
@@ -12,6 +17,16 @@ export var SaveMode;
     /** Screenshots will be always be saved. */
     SaveMode[SaveMode["All"] = 2] = "All";
 })(SaveMode || (SaveMode = {}));
+/**
+ * Search for configuration files on the filesystem.
+ *
+ * @param path The directory to start the search from.
+ * @returns A promise that resolves to an array of configuration files.
+ */
+async function readConfigFiles(path) {
+    const files = await readdir(path, { recursive: true });
+    return files.filter((v) => v.endsWith(CONFIG_NAME)).map((v) => join(path, v));
+}
 /**
  * Configuration for {@link ScreenshotRunner}.
  */
@@ -32,6 +47,16 @@ export class Config {
     watch = null;
     /** Browser logs setup. */
     log = LogLevel.Warn & LogLevel.Error;
+    async load(path) {
+        /* Find all config files to run. */
+        const isDirectory = (await stat(path)).isDirectory();
+        const files = isDirectory ? await readConfigFiles(path) : [path];
+        const errors = (await settlePromises(files.map((c) => this.add(c)))).map((r) => {
+            return `- Could not resolve configuration '${files[r.i]}', reason:\n  ${r.reason}`;
+        });
+        if (errors.length)
+            throw errors.join('\n');
+    }
     /**
      * Append a configuration.
      *
@@ -45,21 +70,18 @@ export class Config {
         const data = await readFile(resolve(configPath), 'utf8');
         const json = JSON.parse(data);
         const { timeout = 60000 } = json;
-        const scenarios = Array.isArray(json.scenarios) ? json.scenarios : [json.scenarios];
+        const jsonScenarios = Array.isArray(json.scenarios)
+            ? json.scenarios
+            : [json.scenarios];
         const path = resolve(dirname(configPath));
         const name = basename(path);
-        const processedScenarios = scenarios.map((s) => ({
+        const scenarios = jsonScenarios.map((s) => ({
             event: s.event ?? s.readyEvent ? `wle-scene-ready:${s.readyEvent}` : '',
             reference: resolve(path, s.reference),
             tolerance: s.tolerance ?? 1,
             perPixelTolerance: s.perPixelTolerance ?? 16,
         }));
-        this.projects.push({
-            timeout,
-            path,
-            name,
-            scenarios: processedScenarios,
-        });
+        this.projects.push({ timeout, path, name, scenarios });
     }
     /**
      * Get the scenario associated to an event.
@@ -83,27 +105,26 @@ export class Config {
     async validate() {
         for (const { name, scenarios } of this.projects) {
             /* Ensure all scenarios have an 'event' or 'readyEvent' key. */
-            const missingEventScenarios = scenarios
-                .map((s, i) => (s.event ? null : i))
-                .filter((v) => v !== null);
-            if (missingEventScenarios.length > 0) {
-                throw new Error(`'${name}': Missing 'event' or 'readyEvent' key for scenarios: ${missingEventScenarios}`);
+            const eventErrors = scenarios
+                .map((v, i) => {
+                if (v.event)
+                    return null;
+                return `  - Missing 'event' / 'readyEvent' keys for scenario ${i}`;
+            })
+                .filter((v) => v);
+            if (eventErrors.length) {
+                const errors = eventErrors.join('\n');
+                throw `${name} contains scenario(s) with missing events:\n${errors}`;
             }
             /* Throws if any of the 'reference' path folder doesn't exist */
             const folderSet = new Set();
             scenarios.forEach((s) => folderSet.add(dirname(s.reference)));
             const folders = Array.from(folderSet);
-            const stats = await Promise.allSettled(folders.map(async (dir) => stat(dir)));
-            const errors = stats
-                .map((r, i) => {
-                if (r.status === 'fulfilled')
-                    return null;
-                return `\n- Missing ${summarizePath(folders[i])}`;
-            })
-                .filter((v) => v !== null);
-            if (!errors.length)
-                continue;
-            throw new Error(`'${name}' contains a scenario(s) with missing reference folder: ${errors}`);
+            const folderErrors = (await settlePromises(folders.map(async (dir) => stat(dir)))).map((r) => `  - Missing ${summarizePath(folders[r.i])}`);
+            if (folderErrors.length) {
+                const errors = folderErrors.join('\n');
+                throw `'${name}' contains scenario(s) with missing reference folder:\n${errors}`;
+            }
         }
     }
 }

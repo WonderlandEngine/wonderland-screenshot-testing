@@ -1,4 +1,9 @@
 import { LogLevel } from './runner.js';
+/**
+ * Constants
+ */
+/** Default configuration filename. */
+export declare const CONFIG_NAME = "config.screenshot.json";
 /** Save mode configuration. */
 export declare enum SaveMode {
     /** Screenshots will not be saved. */
@@ -42,6 +47,7 @@ export declare class Config {
     watch: string | null;
     /** Browser logs setup. */
     log: LogLevel;
+    load(path: string): Promise<void>;
     /**
      * Append a configuration.
      *
