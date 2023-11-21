@@ -45,7 +45,7 @@ export declare class ScreenshotRunner {
      */
     run(config: Config): Promise<boolean>;
     /**
-     * Run the tests for a project.
+     * Run the tests of a given project.
      *
      * @param config The configuration to run.
      * @param project The project to run the scenarios from.

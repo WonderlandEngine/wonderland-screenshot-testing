@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, join, basename } from 'node:path';
 import { PNG } from 'pngjs';
 import { launch as puppeteerLauncher } from 'puppeteer-core';
@@ -7,7 +7,7 @@ import { Launcher } from 'chrome-launcher';
 import handler from 'serve-handler';
 import { SaveMode } from './config.js';
 import { compare } from './image.js';
-import { summarizePath } from './utils.js';
+import { mkdirp, summarizePath } from './utils.js';
 /**
  * Parse the buffer as a png.
  *
@@ -36,7 +36,7 @@ async function loadReferences(scenarios) {
             return parsePNG(expectedData);
         }
         catch (e) {
-            return new Error(`Failed to open reference for scenario ${s.event}:\n\t${e.message}`);
+            return new Error(`Failed to open reference for scenario ${s.event}:\n  ${e.message}`);
         }
     });
     return Promise.all(promises);
@@ -47,17 +47,6 @@ function reduce(indices, array) {
         result[i] = array[indices[i]];
     }
     return result;
-}
-async function mkdirp(path) {
-    try {
-        const s = await stat(path);
-        if (!s.isDirectory) {
-            throw new Error(`directory '${path}' already exists`);
-        }
-    }
-    catch (e) {
-        return mkdir(path);
-    }
 }
 /**
  * Test runner log level.
@@ -114,11 +103,13 @@ export class ScreenshotRunner {
             throw new Error('Could not automatically find any installation of Chrome using chrome-launcher. ' +
                 'Set the CHROME_PATH variable to help chrome-launcher find it');
         }
+        const headless = !config.watch;
         const browser = await puppeteerLauncher({
-            headless: false,
-            devtools: true,
+            headless,
             executablePath,
+            devtools: !headless,
             waitForInitialPage: true,
+            args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
         });
         let success = true;
         try {
@@ -139,7 +130,7 @@ export class ScreenshotRunner {
         return success;
     }
     /**
-     * Run the tests for a project.
+     * Run the tests of a given project.
      *
      * @param config The configuration to run.
      * @param project The project to run the scenarios from.
@@ -160,38 +151,31 @@ export class ScreenshotRunner {
         const first = references.find((img) => !(img instanceof Error));
         /* Capture page screenshots upon events coming from the application. */
         const pngs = await this._captureScreenshots(browser, config, project, {
-            width: first?.width ?? config.width,
-            height: first?.height ?? config.height,
+            width: config.width ?? first?.width ?? 480,
+            height: config.height ?? first?.height ?? 270,
         });
         const screenshots = pngs.map((s) => (s instanceof Error ? s : parsePNG(s)));
         console.log(`\n✏️  Comparing scenarios...`);
         // @todo: Move into worker
         const failed = [];
-        let success = true;
         for (let i = 0; i < count; ++i) {
             const { event, tolerance, perPixelTolerance } = scenarios[i];
             const screenshot = screenshots[i];
-            if (screenshot instanceof Error) {
-                success = false;
-                console.log(`❌ Scenario '${event}' failed with error:\n\t${screenshot.message}`);
-                continue;
-            }
             const reference = references[i];
-            if (reference instanceof Error) {
-                success = false;
+            if (screenshot instanceof Error || reference instanceof Error) {
                 failed.push(i);
-                console.log(`❌ Scenario '${event}' failed with error:\n\t${reference.message}`);
+                const msg = screenshot.message ?? reference.message;
+                console.log(`❌ Scenario '${event}' failed with error:\n  ${msg}`);
                 continue;
             }
             const res = compare(screenshot, reference);
             const meanFailed = res.rmse > tolerance;
             const maxFailed = res.max > perPixelTolerance;
             if (meanFailed || maxFailed) {
-                success = false;
                 failed.push(i);
                 console.log(`❌ Scenario '${event}' failed!`);
-                console.log(`\trmse: ${res.rmse} | tolerance: ${tolerance}`);
-                console.log(`\tmax: ${res.max} | tolerance: ${perPixelTolerance}`);
+                console.log(`  rmse: ${res.rmse} | tolerance: ${tolerance}`);
+                console.log(`  max: ${res.max} | tolerance: ${perPixelTolerance}`);
                 continue;
             }
             console.log(`✅ Scenario ${event} passed!`);
@@ -207,7 +191,7 @@ export class ScreenshotRunner {
                 await this._save(config, project, scenarios, pngs);
                 break;
         }
-        return success;
+        return !failed.length;
     }
     /**
      * Capture the screenshots for a project.
@@ -243,10 +227,6 @@ export class ScreenshotRunner {
         });
         page.setViewport({ width, height, deviceScaleFactor: 1 });
         page.setCacheEnabled(false);
-        /* We do not use waitUntil: 'networkidle0' in order to setup
-         * the event sink before the project is fully loaded. */
-        await page.goto(`http://localhost:${config.port}/index.html`);
-        console.log(`📷 Capturing scenarios...`);
         let eventCount = 0;
         let watching = false;
         async function processEvent(e) {
@@ -264,6 +244,9 @@ export class ScreenshotRunner {
             watching = e === config.watch;
         }
         await page.exposeFunction('testScreenshot', processEvent);
+        /* We do not use waitUntil: 'networkidle0' in order to setup
+         * the event sink before the project is fully loaded. */
+        await page.goto(`http://localhost:${config.port}/index.html`);
         /* The runner also supports scene loaded events, forwarded in the DOM.
          * Each time a load event occurs, we convert it to a unique event name and
          * forward the call to `testScreenshot`. */
@@ -273,6 +256,7 @@ export class ScreenshotRunner {
                 window.testScreenshot(`wle-scene-ready:${e.detail.filename}`);
             });
         });
+        console.log(`📷 Capturing scenarios...`);
         let time = 0;
         while (!watching && eventCount < count && time < project.timeout) {
             const debounceTime = 1000;
@@ -308,6 +292,8 @@ export class ScreenshotRunner {
         const promises = [];
         for (let i = 0; i < scenarios.length; ++i) {
             const data = pngs[i];
+            if (data instanceof Error)
+                continue;
             const scenario = scenarios[i];
             const path = output
                 ? join(output, basename(scenario.reference))
@@ -315,7 +301,7 @@ export class ScreenshotRunner {
             const summary = summarizePath(path);
             promises.push(writeFile(path, data)
                 .then(() => console.log(`Screenshot '${summary}' saved`))
-                .catch((e) => console.log(`❌ Failed to write png '${summary}'\n\t${e.reason}`)));
+                .catch((e) => console.log(`❌ Failed to write png '${summary}'\n  ${e.reason}`)));
         }
         return Promise.all(promises);
     }

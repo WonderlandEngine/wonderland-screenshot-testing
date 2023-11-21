@@ -18,6 +18,16 @@ export var SaveMode;
     SaveMode[SaveMode["All"] = 2] = "All";
 })(SaveMode || (SaveMode = {}));
 /**
+ * Convert the 'readyEvent' entry in a configuration
+ * into a generic 'event'.
+ *
+ * @param event The ready event to convert.
+ * @returns An event of the form `wle-scene-ready:${event}`.
+ */
+export function convertReadyEvent(event) {
+    return `wle-scene-ready:${event}`;
+}
+/**
  * Search for configuration files on the filesystem.
  *
  * @param path The directory to start the search from.
@@ -37,10 +47,10 @@ export class Config {
     output = null;
     /** Whether to save the screenshots or not.  */
     save = SaveMode.None;
-    /** Default screenshot width. */
-    width = 480;
-    /** Default screenshot height. */
-    height = 270;
+    /** Overriding screenshot width. */
+    width = null;
+    /** Overriding screenshot height. */
+    height = null;
     /** Web server port. */
     port = 8080;
     /** Event to watch. If `null`, watching is disabled. */
@@ -76,7 +86,7 @@ export class Config {
         const path = resolve(dirname(configPath));
         const name = basename(path);
         const scenarios = jsonScenarios.map((s) => ({
-            event: s.event ?? s.readyEvent ? `wle-scene-ready:${s.readyEvent}` : '',
+            event: s.event ?? s.readyEvent ? convertReadyEvent(s.readyEvent) : '',
             reference: resolve(path, s.reference),
             tolerance: s.tolerance ?? 1,
             perPixelTolerance: s.perPixelTolerance ?? 16,

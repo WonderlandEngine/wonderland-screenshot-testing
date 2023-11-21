@@ -115,13 +115,14 @@ export class ScreenshotRunner {
             );
         }
 
-        const headless = config.watch !== null;
+        const headless = !config.watch;
 
         const browser = await puppeteerLauncher({
             headless,
             executablePath,
             devtools: !headless,
             waitForInitialPage: true,
+            args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
         });
 
         let success = true;
@@ -264,10 +265,6 @@ export class ScreenshotRunner {
         page.setViewport({width, height, deviceScaleFactor: 1});
         page.setCacheEnabled(false);
 
-        /* We do not use waitUntil: 'networkidle0' in order to setup
-         * the event sink before the project is fully loaded. */
-        await page.goto(`http://localhost:${config.port}/index.html`);
-
         let eventCount = 0;
         let watching = false;
         async function processEvent(e: string) {
@@ -287,12 +284,11 @@ export class ScreenshotRunner {
             /* Watching the scenario allows to debug it */
             watching = e === config.watch;
         }
+
         await page.exposeFunction('testScreenshot', processEvent);
-
-        console.log(`📷 Capturing scenarios...`);
-
-        console.log('AAAA');
-
+        /* We do not use waitUntil: 'networkidle0' in order to setup
+         * the event sink before the project is fully loaded. */
+        await page.goto(`http://localhost:${config.port}/index.html`);
         /* The runner also supports scene loaded events, forwarded in the DOM.
          * Each time a load event occurs, we convert it to a unique event name and
          * forward the call to `testScreenshot`. */
@@ -303,9 +299,10 @@ export class ScreenshotRunner {
             });
         });
 
+        console.log(`📷 Capturing scenarios...`);
+
         let time = 0;
         while (!watching && eventCount < count && time < project.timeout) {
-            console.log(watching, eventCount);
             const debounceTime = 1000;
             await new Promise((res) => setTimeout(res, debounceTime));
             time += debounceTime;

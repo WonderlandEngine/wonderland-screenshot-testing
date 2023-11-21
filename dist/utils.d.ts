@@ -16,6 +16,13 @@ export declare function settlePromises(promises: Promise<unknown>[]): Promise<{
     reason: any;
 }[]>;
 /**
+ * Make directory if doesn't exist.
+ *
+ * @param path The path to make.
+ * @returns A promise that resolves once the directory is created.
+ */
+export declare function mkdirp(path: string): Promise<void>;
+/**
  * Log an error on stderr.
  *
  * @param msg Message to log.

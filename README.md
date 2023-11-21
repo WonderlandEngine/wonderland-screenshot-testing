@@ -155,6 +155,16 @@ if (isPlayerShooting()) {
 }
 ```
 
+## Debugging
+
+You can start the runner in watch mode by specifying the event to watch:
+
+```sh
+wle-screenshot-testing config.screenshot.json MyScene.bin
+```
+
+In watch mode, the browser will automatically open and the tests will block when the event arrives.
+
 ## CLI Arguments
 
 |Argument|Type|Description|

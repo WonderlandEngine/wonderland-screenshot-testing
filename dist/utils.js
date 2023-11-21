@@ -1,3 +1,4 @@
+import { mkdir, stat } from 'node:fs/promises';
 /**
  * Summarize a path into '/path/<...>/to/something.
  *
@@ -24,6 +25,23 @@ export async function settlePromises(promises) {
     return results
         .map((r, i) => (r.status === 'rejected' ? { i, reason: r.reason } : null))
         .filter((v) => v !== null);
+}
+/**
+ * Make directory if doesn't exist.
+ *
+ * @param path The path to make.
+ * @returns A promise that resolves once the directory is created.
+ */
+export async function mkdirp(path) {
+    try {
+        const s = await stat(path);
+        if (!s.isDirectory) {
+            throw new Error(`directory '${path}' already exists`);
+        }
+    }
+    catch (e) {
+        return mkdir(path);
+    }
 }
 /**
  * Log an error on stderr.
