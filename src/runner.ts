@@ -9,7 +9,7 @@ import handler from 'serve-handler';
 
 import {Config, Scenario, Project, SaveMode} from './config.js';
 import {Dimensions, Image2d, compare} from './image.js';
-import {summarizePath} from './utils.js';
+import {mkdirp, summarizePath} from './utils.js';
 
 /**
  * Parse the buffer as a png.
@@ -40,7 +40,7 @@ async function loadReferences(scenarios: Scenario[]): Promise<(Image2d | Error)[
             return parsePNG(expectedData);
         } catch (e: any) {
             return new Error(
-                `Failed to open reference for scenario ${s.event}:\n\t${e.message}`
+                `Failed to open reference for scenario ${s.event}:\n  ${e.message}`
             );
         }
     });
@@ -53,17 +53,6 @@ function reduce<T>(indices: number[], array: T[]) {
         result[i] = array[indices[i]];
     }
     return result;
-}
-
-async function mkdirp(path: string) {
-    try {
-        const s = await stat(path);
-        if (!s.isDirectory) {
-            throw new Error(`directory '${path}' already exists`);
-        }
-    } catch (e) {
-        return mkdir(path);
-    }
 }
 
 /**
@@ -126,15 +115,17 @@ export class ScreenshotRunner {
             );
         }
 
+        const headless = !config.watch;
+
         const browser = await puppeteerLauncher({
-            headless: false,
-            devtools: true,
+            headless,
             executablePath,
+            devtools: !headless,
             waitForInitialPage: true,
+            args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
         });
 
         let success = true;
-
         try {
             for (const project of config.projects) {
                 /* We do not test multiple pages simultaneously to prevent
@@ -153,7 +144,7 @@ export class ScreenshotRunner {
     }
 
     /**
-     * Run the tests for a project.
+     * Run the tests of a given project.
      *
      * @param config The configuration to run.
      * @param project The project to run the scenarios from.
@@ -182,36 +173,24 @@ export class ScreenshotRunner {
 
         /* Capture page screenshots upon events coming from the application. */
         const pngs = await this._captureScreenshots(browser, config, project, {
-            width: first?.width ?? config.width,
-            height: first?.height ?? config.height,
+            width: config.width ?? first?.width ?? 480,
+            height: config.height ?? first?.height ?? 270,
         });
-
         const screenshots = pngs.map((s) => (s instanceof Error ? s : parsePNG(s)));
 
         console.log(`\n✏️  Comparing scenarios...`);
 
         // @todo: Move into worker
         const failed: number[] = [];
-        let success = true;
         for (let i = 0; i < count; ++i) {
             const {event, tolerance, perPixelTolerance} = scenarios[i];
 
             const screenshot = screenshots[i];
-            if (screenshot instanceof Error) {
-                success = false;
-                console.log(
-                    `❌ Scenario '${event}' failed with error:\n\t${screenshot.message}`
-                );
-                continue;
-            }
-
             const reference = references[i];
-            if (reference instanceof Error) {
-                success = false;
+            if (screenshot instanceof Error || reference instanceof Error) {
                 failed.push(i);
-                console.log(
-                    `❌ Scenario '${event}' failed with error:\n\t${reference.message}`
-                );
+                const msg = (screenshot as Error).message ?? (reference as Error).message;
+                console.log(`❌ Scenario '${event}' failed with error:\n  ${msg}`);
                 continue;
             }
 
@@ -219,11 +198,10 @@ export class ScreenshotRunner {
             const meanFailed = res.rmse > tolerance;
             const maxFailed = res.max > perPixelTolerance;
             if (meanFailed || maxFailed) {
-                success = false;
                 failed.push(i);
                 console.log(`❌ Scenario '${event}' failed!`);
-                console.log(`\trmse: ${res.rmse} | tolerance: ${tolerance}`);
-                console.log(`\tmax: ${res.max} | tolerance: ${perPixelTolerance}`);
+                console.log(`  rmse: ${res.rmse} | tolerance: ${tolerance}`);
+                console.log(`  max: ${res.max} | tolerance: ${perPixelTolerance}`);
                 continue;
             }
 
@@ -242,7 +220,7 @@ export class ScreenshotRunner {
                 break;
         }
 
-        return success;
+        return !failed.length;
     }
 
     /**
@@ -287,15 +265,8 @@ export class ScreenshotRunner {
         page.setViewport({width, height, deviceScaleFactor: 1});
         page.setCacheEnabled(false);
 
-        /* We do not use waitUntil: 'networkidle0' in order to setup
-         * the event sink before the project is fully loaded. */
-        await page.goto(`http://localhost:${config.port}/index.html`);
-
-        console.log(`📷 Capturing scenarios...`);
-
         let eventCount = 0;
         let watching = false;
-
         async function processEvent(e: string) {
             if (!eventToScenario.has(e)) {
                 console.warn(`❌ Received non-existing event: '${e}'`);
@@ -310,13 +281,14 @@ export class ScreenshotRunner {
             /* Needs to be set after taking the screenshot to avoid
              * closing the browser too fast. */
             ++eventCount;
-
             /* Watching the scenario allows to debug it */
             watching = e === config.watch;
         }
 
         await page.exposeFunction('testScreenshot', processEvent);
-
+        /* We do not use waitUntil: 'networkidle0' in order to setup
+         * the event sink before the project is fully loaded. */
+        await page.goto(`http://localhost:${config.port}/index.html`);
         /* The runner also supports scene loaded events, forwarded in the DOM.
          * Each time a load event occurs, we convert it to a unique event name and
          * forward the call to `testScreenshot`. */
@@ -326,6 +298,8 @@ export class ScreenshotRunner {
                 window.testScreenshot(`wle-scene-ready:${e.detail.filename}`);
             });
         });
+
+        console.log(`📷 Capturing scenarios...`);
 
         let time = 0;
         while (!watching && eventCount < count && time < project.timeout) {
@@ -340,6 +314,7 @@ export class ScreenshotRunner {
         }
 
         await page.close();
+
         return results;
     }
 
@@ -372,16 +347,18 @@ export class ScreenshotRunner {
         const promises = [];
         for (let i = 0; i < scenarios.length; ++i) {
             const data = pngs[i];
+            if (data instanceof Error) continue;
+
             const scenario = scenarios[i];
             const path = output
                 ? join(output, basename(scenario.reference))
                 : scenario.reference;
             const summary = summarizePath(path);
             promises.push(
-                writeFile(path, data as Buffer)
+                writeFile(path, data)
                     .then(() => console.log(`Screenshot '${summary}' saved`))
                     .catch((e) =>
-                        console.log(`❌ Failed to write png '${summary}'\n\t${e.reason}`)
+                        console.log(`❌ Failed to write png '${summary}'\n  ${e.reason}`)
                     )
             );
         }

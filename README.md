@@ -68,6 +68,15 @@ _config.screenshot.json_
 The `readyEvent` is used to take the screenshot once the scene `MyWonderland.bin`
 is loaded. The screenshot is then compared to the file `./test/reference.png`.
 
+When running the CLI for the first time, you might want to specify the screenshot size using:
+
+```sh
+wle-screenshot-testing config.screenshot.json --width 1920 --height 1080 --save
+```
+
+This will save all references with a size of `1920x1080`. If no references are found and no size is specified,
+the runner will use a default size of `480x270`.
+
 For more information about the configuration, have a look at the [Configuration File](#configuration-file) section.
 
 ## Configuration File
@@ -146,6 +155,16 @@ if (isPlayerShooting()) {
 }
 ```
 
+## Debugging
+
+You can start the runner in watch mode by specifying the event to watch:
+
+```sh
+wle-screenshot-testing config.screenshot.json MyScene.bin
+```
+
+In watch mode, the browser will automatically open and the tests will block when the event arrives.
+
 ## CLI Arguments
 
 |Argument|Type|Description|
@@ -154,3 +173,5 @@ if (isPlayerShooting()) {
 |**--save**|_Flag_|Save every screenshot|
 |**-o, --output**|_Path_|Output folder for saved screenshots. References overwritten by default|
 |**-w, --watch**|_String_|Event to watch, i.e., to freeze the runner on|
+|**--width**|_Number_|Overriding screenshot width|
+|**--height**|_Number_|Overriding screenshot height|

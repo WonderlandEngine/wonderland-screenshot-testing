@@ -1,4 +1,9 @@
 import { LogLevel } from './runner.js';
+/**
+ * Constants
+ */
+/** Default configuration filename. */
+export declare const CONFIG_NAME = "config.screenshot.json";
 /** Save mode configuration. */
 export declare enum SaveMode {
     /** Screenshots will not be saved. */
@@ -23,6 +28,14 @@ export interface Project {
     scenarios: Scenario[];
 }
 /**
+ * Convert the 'readyEvent' entry in a configuration
+ * into a generic 'event'.
+ *
+ * @param event The ready event to convert.
+ * @returns An event of the form `wle-scene-ready:${event}`.
+ */
+export declare function convertReadyEvent(event: string): string;
+/**
  * Configuration for {@link ScreenshotRunner}.
  */
 export declare class Config {
@@ -32,16 +45,17 @@ export declare class Config {
     output: string | null;
     /** Whether to save the screenshots or not.  */
     save: SaveMode;
-    /** Default screenshot width. */
-    width: number;
-    /** Default screenshot height. */
-    height: number;
+    /** Overriding screenshot width. */
+    width: number | null;
+    /** Overriding screenshot height. */
+    height: number | null;
     /** Web server port. */
     port: number;
     /** Event to watch. If `null`, watching is disabled. */
     watch: string | null;
     /** Browser logs setup. */
     log: LogLevel;
+    load(path: string): Promise<void>;
     /**
      * Append a configuration.
      *

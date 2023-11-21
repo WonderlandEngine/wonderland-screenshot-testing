@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import {join, resolve} from 'node:path';
-import {stat, readdir} from 'node:fs/promises';
+import {resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 
-import {Config, SaveMode} from './config.js';
+import {CONFIG_NAME, Config, SaveMode, convertReadyEvent} from './config.js';
 import {ScreenshotRunner} from './runner.js';
+import {logError} from './utils.js';
 
 interface Arguments {
     /** Print help. */
@@ -16,6 +16,10 @@ interface Arguments {
     output?: string;
     /** Save all captured screenshots. */
     save?: boolean;
+    /** Overriding screenshot width */
+    width?: string;
+    /** Overriding screenshot height */
+    height?: string;
     /** Save screenshots associated to failed tests. */
     'save-on-failure'?: boolean;
 }
@@ -25,7 +29,6 @@ interface Arguments {
  */
 
 const COMMAND_NAME = 'wle-screenshot-testing';
-const CONFIG_NAME = 'config.screenshot.json';
 
 /**
  * Utils
@@ -41,8 +44,16 @@ function printHelp(summary = false) {
     console.log(`USAGE: ${COMMAND_NAME} <PATH>`);
     console.log('\nFLAGS:');
     console.log(
+        '\t-o, --output:\tScreenshot output folder. Overwrites references by default\n' +
+            '\t--width:\tOverriding screenshot width\n' +
+            '\t--height:\tOverriding screenshot height\n'
+    );
+
+    console.log('\nFLAGS:');
+    console.log(
         '\t-h, --help:\tPrints help\n' +
             '\t-w, --watch:\tStart the runner in watch mode for debugging\n' +
+            '\t--save:\tSave all test screenshots' +
             '\t--save-on-failure:\tOverwrites failed references with the test screenshot'
     );
 }
@@ -61,6 +72,8 @@ try {
             watch: {type: 'string', short: 'w'},
             output: {type: 'string', short: 'o'},
             save: {type: 'boolean', short: 's'},
+            width: {type: 'string'},
+            height: {type: 'string'},
             'save-on-failure': {type: 'boolean'},
         },
         allowPositionals: true,
@@ -76,49 +89,46 @@ if (args.help) {
     process.exit(0);
 }
 
-/* Find all config files to run. */
-const configPath = positionals[0] ?? CONFIG_NAME;
-let configFiles: string[] = [];
-if ((await stat(configPath)).isDirectory()) {
-    configFiles = (await readdir(configPath, {recursive: true}))
-        .filter((v) => v.endsWith(CONFIG_NAME))
-        .map((v) => join(configPath, v));
-} else {
-    configFiles.push(configPath);
-}
-
 const config = new Config();
 config.watch = args.watch ?? null;
 config.output = args.output ? resolve(args.output) : null;
 config.save = args['save-on-failure'] ? SaveMode.OnFailure : SaveMode.None;
 config.save = args.save ? SaveMode.All : config.save;
-
-const promises = await Promise.allSettled(configFiles.map((c) => config.add(c)));
-let configFailed = false;
-for (let i = 0; i < promises.length; ++i) {
-    const promise = promises[i];
-    if (promise.status === 'fulfilled') continue;
-
-    configFailed = true;
-    console.error(`❌ Could not resolve configuration '${configFiles[i]}', reason:\n`);
-    console.error(promise.reason);
+try {
+    const width = args.width ? parseInt(args.width) : null;
+    const height = args.height ? parseInt(args.height) : null;
+    if (width) config.width = width;
+    if (height) config.height = height;
+} catch (e) {
+    logError('--width and --height must be integers');
+    process.exit(1);
 }
 
-if (configFailed) {
+try {
+    await config.load(positionals[0] ?? CONFIG_NAME);
+} catch (e) {
+    logError('Failed to load configuration file(s), reason:\n');
+    console.error(e);
     process.exit(1);
 }
 
 try {
     await config.validate();
 } catch (e) {
-    console.error(`❌ Configuration error(s) found:\n`);
+    logError('Configuration error(s) found:\n');
     console.error(e);
     process.exit(1);
 }
 
-if (config.watch && !config.scenarioForEvent(config.watch)) {
-    console.error(`❌ Could not find scenario to watch: '${config.watch}`);
-    process.exit(1);
+if (config.watch) {
+    const scenario =
+        config.scenarioForEvent(config.watch) ??
+        config.scenarioForEvent(convertReadyEvent(config.watch));
+    if (!scenario) {
+        logError(`Could not find scenario to watch: '${config.watch}`);
+        process.exit(1);
+    }
+    config.watch = scenario.event;
 }
 
 const runner = new ScreenshotRunner();
