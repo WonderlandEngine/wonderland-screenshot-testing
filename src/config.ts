@@ -37,6 +37,17 @@ export interface Project {
     scenarios: Scenario[];
 }
 
+/**
+ * Convert the 'readyEvent' entry in a configuration
+ * into a generic 'event'.
+ *
+ * @param event The ready event to convert.
+ * @returns An event of the form `wle-scene-ready:${event}`.
+ */
+export function convertReadyEvent(event: string) {
+    return `wle-scene-ready:${event}`;
+}
+
 /** Raw scenario description from the json file. */
 interface ScenarioJson extends Scenario {
     readyEvent: string;
@@ -66,10 +77,10 @@ export class Config {
     /** Whether to save the screenshots or not.  */
     save: SaveMode = SaveMode.None;
 
-    /** Default screenshot width. */
-    width = 480;
-    /** Default screenshot height. */
-    height = 270;
+    /** Overriding screenshot width. */
+    width: number | null = null;
+    /** Overriding screenshot height. */
+    height: number | null = null;
 
     /** Web server port. */
     port: number = 8080;
@@ -115,7 +126,7 @@ export class Config {
         const path = resolve(dirname(configPath));
         const name = basename(path);
         const scenarios = (jsonScenarios as ScenarioJson[]).map((s) => ({
-            event: s.event ?? s.readyEvent ? `wle-scene-ready:${s.readyEvent}` : '',
+            event: s.event ?? s.readyEvent ? convertReadyEvent(s.readyEvent) : '',
             reference: resolve(path, s.reference),
             tolerance: s.tolerance ?? 1,
             perPixelTolerance: s.perPixelTolerance ?? 16,
