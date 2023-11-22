@@ -7,6 +7,8 @@
 
 # Wonderland Screenshot Testing
 
+![Screenshot testing CLI example](img/example.gif)
+
 Tests runner helping to prevent visual regressions in Wonderland Engine projects.
 
 Learn more about Wonderland Engine at [https://wonderlandengine.com](https://wonderlandengine.com).
