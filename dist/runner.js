@@ -91,6 +91,7 @@ export class ScreenshotRunner {
      * @returns `true` if all tests passed, `false` otherwise.
      */
     async run(config) {
+        console.log(`Starting test server on port: ${config.port}\n`);
         const server = createServer((request, response) => {
             return handler(request, response, {
                 public: this._currentBasePath,
@@ -142,7 +143,7 @@ export class ScreenshotRunner {
         this._currentBasePath = resolve(project.path, 'deploy');
         const scenarios = project.scenarios;
         const count = scenarios.length;
-        console.log(`\n📎 Running project ${project.name} with ${count} scenarios\n`);
+        console.log(`📎 Running project ${project.name} with ${count} scenarios\n`);
         if (config.output) {
             await mkdirp(config.output);
         }
