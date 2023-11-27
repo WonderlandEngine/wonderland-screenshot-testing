@@ -155,7 +155,11 @@ export class Config {
      * @note **Throws** if the configuration is invalid.
      */
     async validate() {
+        if (!this.projects.length) throw 'No configuration to test';
+
         for (const {name, scenarios} of this.projects) {
+            if (!scenarios.length) throw `${name} has no scenarios`;
+
             /* Ensure all scenarios have an 'event' or 'readyEvent' key. */
             const eventErrors = scenarios
                 .map((v, i) => {

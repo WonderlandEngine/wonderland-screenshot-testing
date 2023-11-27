@@ -99,14 +99,14 @@ export class ScreenshotRunner {
      * @returns `true` if all tests passed, `false` otherwise.
      */
     async run(config: Config): Promise<boolean> {
-        console.log(`Starting test server on port: ${config.port}\n`);
-
         const server = createServer((request, response) => {
             return handler(request, response, {
                 public: this._currentBasePath,
             });
         });
         server.listen(config.port);
+
+        console.log(`Starting test server on port: ${config.port}`);
 
         const executablePath = Launcher.getFirstInstallation();
         if (!executablePath) {
@@ -116,6 +116,8 @@ export class ScreenshotRunner {
                     'Set the CHROME_PATH variable to help chrome-launcher find it'
             );
         }
+
+        console.log(`Chrome executable: ${summarizePath(executablePath)}\n`);
 
         const headless = !config.watch;
 
@@ -162,9 +164,7 @@ export class ScreenshotRunner {
 
         console.log(`📎 Running project ${project.name} with ${count} scenarios\n`);
 
-        if (config.output) {
-            await mkdirp(config.output);
-        }
+        if (config.output) await mkdirp(config.output);
 
         /* Load references first to validate their size. */
         const references = await loadReferences(scenarios);
