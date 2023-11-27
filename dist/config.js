@@ -30,12 +30,25 @@ export function convertReadyEvent(event) {
 /**
  * Search for configuration files on the filesystem.
  *
- * @param path The directory to start the search from.
+ * @param directory The directory to start the search from.
  * @returns A promise that resolves to an array of configuration files.
  */
-async function readConfigFiles(path) {
-    const files = await readdir(path, { recursive: true });
-    return files.filter((v) => v.endsWith(CONFIG_NAME)).map((v) => join(path, v));
+async function readConfigFiles(directory) {
+    const search = async (path, out) => {
+        /* Not using `recursive: true` to support older node versions */
+        const files = await readdir(path, { withFileTypes: true });
+        const promises = [];
+        for (const file of files) {
+            if (file.isDirectory()) {
+                promises.push(search(join(path, file.name), out));
+            }
+            else if (file.name.endsWith(CONFIG_NAME)) {
+                out.push(join(path, file.name));
+            }
+        }
+        return Promise.all(promises).then(() => out);
+    };
+    return search(directory, []);
 }
 /**
  * Configuration for {@link ScreenshotRunner}.
