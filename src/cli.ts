@@ -132,5 +132,12 @@ if (config.watch) {
 }
 
 const runner = new ScreenshotRunner();
-const success = await runner.run(config);
-process.exit(success ? 0 : 1);
+
+try {
+    const success = await runner.run(config);
+    process.exit(success ? 0 : 1);
+} catch (e) {
+    logError('Got an unexpected error while running the tests:\n');
+    console.error(e);
+    process.exit(1);
+}
