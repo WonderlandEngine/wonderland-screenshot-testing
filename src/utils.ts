@@ -60,7 +60,7 @@ export function logError(msg: any, error?: any) {
 }
 
 /**
- * Log an error on stderr and exit the process with value return code`1`.
+ * Log an error on stderr and exit the process with return code`1`.
  *
  * @param msg Message to log.
  * @param error The error content to log.

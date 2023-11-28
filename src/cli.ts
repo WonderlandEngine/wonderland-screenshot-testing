@@ -44,9 +44,10 @@ function printHelp(summary = false) {
         );
     }
     console.log(`USAGE: ${COMMAND_NAME} <PATH>`);
-    console.log('\nFLAGS:');
+    console.log('\nOPTIONS:');
     console.log(
         '\t-o, --output:\tScreenshot output folder. Overwrites references by default\n' +
+            '\t--logs:\tPath to save the browser logs. Logs will be discarded if not provided\n' +
             '\t--width:\tOverriding screenshot width\n' +
             '\t--height:\tOverriding screenshot height\n'
     );
