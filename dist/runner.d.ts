@@ -35,35 +35,51 @@ export declare enum LogLevel {
  * ```
  */
 export declare class ScreenshotRunner {
+    /** Browser logs */
+    logs: string[];
+    /** Configuration to run. @hidden */
+    private _config;
     /** Base path to serve. @hidden */
-    _currentBasePath: string;
+    private _currentBasePath;
+    /** Dispatch an info log coming from the browser. @hidden */
+    private _onBrowserInfoLog;
+    /**
+     * Create a new runner.
+     *
+     * @param config The configuration to run.
+     */
+    constructor(config: Config);
     /**
      * Run the tests described in `config`.
      *
-     * @param config The configuration to run.
      * @returns `true` if all tests passed, `false` otherwise.
      */
-    run(config: Config): Promise<boolean>;
+    run(): Promise<boolean>;
+    /**
+     * Save the current logs at the specified path.
+     *
+     * @param path The path to save the log at.
+     * @returns A promise that resolves once the file is saved.
+     */
+    saveLogs(path: string): Promise<void>;
     /**
      * Run the tests of a given project.
      *
-     * @param config The configuration to run.
      * @param project The project to run the scenarios from.
      * @param browser Browser instance.
      * @returns A promise that resolves to `true` if all tests passed,
      *     `false` otherwise.
      */
-    _runTests(config: Config, project: Project, browser: Browser): Promise<boolean>;
+    _runTests(project: Project, browser: Browser): Promise<boolean>;
     /**
      * Capture the screenshots for a project.
      *
-     * @param config The runner configuration.
      * @param project The project to capture the screenshots from.
      * @param browser The browser instance.
      * @returns An array of promise that resolve with the data for loaded images,
      *    or errors for failed images.
      */
-    _captureScreenshots(browser: Browser, config: Config, project: Project, { width, height }: Dimensions): Promise<(Error | Buffer)[]>;
+    _captureScreenshots(browser: Browser, project: Project, { width, height }: Dimensions): Promise<(Error | Buffer)[]>;
     /**
      * Save the captured references of a list of scenarios.
      *
