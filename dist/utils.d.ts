@@ -26,5 +26,13 @@ export declare function mkdirp(path: string): Promise<void>;
  * Log an error on stderr.
  *
  * @param msg Message to log.
+ * @param error The error content to log.
  */
-export declare function logError(msg: any): void;
+export declare function logError(msg: any, error?: any): void;
+/**
+ * Log an error on stderr and exit the process with return code`1`.
+ *
+ * @param msg Message to log.
+ * @param error The error content to log.
+ */
+export declare function logErrorExit(msg: any, error?: any): never;

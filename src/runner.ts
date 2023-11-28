@@ -1,15 +1,23 @@
 import {createServer} from 'node:http';
 import {mkdir, readFile, stat, writeFile} from 'node:fs/promises';
-import {resolve, join, basename} from 'node:path';
+import {resolve, join, basename, dirname} from 'node:path';
 
 import {PNG} from 'pngjs';
-import {launch as puppeteerLauncher, Browser} from 'puppeteer-core';
+import {launch as puppeteerLauncher, Browser, ConsoleMessage} from 'puppeteer-core';
 import {Launcher} from 'chrome-launcher';
 import handler from 'serve-handler';
 
 import {Config, Scenario, Project, SaveMode} from './config.js';
 import {Dimensions, Image2d, compare} from './image.js';
 import {mkdirp, summarizePath} from './utils.js';
+import {format} from 'node:util';
+
+/** State the runner is currently in. */
+enum WebRunnerState {
+    Running = 1,
+    Watching = 2,
+    Error = 3,
+}
 
 /**
  * Parse the buffer as a png.
@@ -67,6 +75,12 @@ export enum LogLevel {
     Error = 1 << 2,
 }
 
+const LogTypeToLevel = {
+    log: LogLevel.Info,
+    warn: LogLevel.Warn,
+    Error: LogLevel.Error,
+};
+
 /**
  * Screenshot test suite runner.
  *
@@ -89,16 +103,42 @@ export enum LogLevel {
  * ```
  */
 export class ScreenshotRunner {
+    /** Browser logs */
+    logs: string[] = [];
+
+    /** Configuration to run. @hidden */
+    private _config: Config;
+
     /** Base path to serve. @hidden */
-    _currentBasePath = '';
+    private _currentBasePath = '';
+
+    /** Dispatch an info log coming from the browser. @hidden */
+    private _onBrowserInfoLog = (message: ConsoleMessage) => {
+        const msg = message.text();
+        const type = message.type() as 'log' | 'warn' | 'error';
+        const level = LogTypeToLevel[type as keyof typeof LogTypeToLevel];
+        this.logs.push(`[${message.type()}] ${msg}`);
+        if (this._config.log & level) console[type](`[browser] ${msg}`);
+    };
+
+    /**
+     * Create a new runner.
+     *
+     * @param config The configuration to run.
+     */
+    constructor(config: Config) {
+        this._config = config;
+    }
 
     /**
      * Run the tests described in `config`.
      *
-     * @param config The configuration to run.
      * @returns `true` if all tests passed, `false` otherwise.
      */
-    async run(config: Config): Promise<boolean> {
+    async run(): Promise<boolean> {
+        this.logs.length = 0;
+
+        const config = this._config;
         const server = createServer((request, response) => {
             return handler(request, response, {
                 public: this._currentBasePath,
@@ -117,7 +157,7 @@ export class ScreenshotRunner {
             );
         }
 
-        console.log(`Chrome executable: ${summarizePath(executablePath)}\n`);
+        console.log(`Chrome executable: ${summarizePath(executablePath)}`);
 
         const headless = !config.watch;
 
@@ -134,7 +174,7 @@ export class ScreenshotRunner {
             for (const project of config.projects) {
                 /* We do not test multiple pages simultaneously to prevent
                  * the animation loop to stop. */
-                const result = await this._runTests(config, project, browser);
+                const result = await this._runTests(project, browser);
                 success &&= result;
             }
         } catch (e) {
@@ -148,21 +188,36 @@ export class ScreenshotRunner {
     }
 
     /**
+     * Save the current logs at the specified path.
+     *
+     * @param path The path to save the log at.
+     * @returns A promise that resolves once the file is saved.
+     */
+    async saveLogs(path: string) {
+        const fullpath = resolve(path);
+        const directory = resolve(dirname(fullpath));
+        await mkdirp(directory);
+
+        const content = this.logs.join('\n');
+        return writeFile(fullpath, content);
+    }
+
+    /**
      * Run the tests of a given project.
      *
-     * @param config The configuration to run.
      * @param project The project to run the scenarios from.
      * @param browser Browser instance.
      * @returns A promise that resolves to `true` if all tests passed,
      *     `false` otherwise.
      */
-    async _runTests(config: Config, project: Project, browser: Browser): Promise<boolean> {
+    async _runTests(project: Project, browser: Browser): Promise<boolean> {
         this._currentBasePath = resolve(project.path, 'deploy');
 
+        const config = this._config;
         const scenarios = project.scenarios;
         const count = scenarios.length;
 
-        console.log(`📎 Running project ${project.name} with ${count} scenarios\n`);
+        console.log(`\n📎 Running project ${project.name} with ${count} scenarios\n`);
 
         if (config.output) await mkdirp(config.output);
 
@@ -174,7 +229,7 @@ export class ScreenshotRunner {
             | undefined;
 
         /* Capture page screenshots upon events coming from the application. */
-        const pngs = await this._captureScreenshots(browser, config, project, {
+        const pngs = await this._captureScreenshots(browser, project, {
             width: config.width ?? first?.width ?? 480,
             height: config.height ?? first?.height ?? 270,
         });
@@ -228,7 +283,6 @@ export class ScreenshotRunner {
     /**
      * Capture the screenshots for a project.
      *
-     * @param config The runner configuration.
      * @param project The project to capture the screenshots from.
      * @param browser The browser instance.
      * @returns An array of promise that resolve with the data for loaded images,
@@ -236,11 +290,11 @@ export class ScreenshotRunner {
      */
     async _captureScreenshots(
         browser: Browser,
-        config: Config,
         project: Project,
         {width, height}: Dimensions
     ) {
-        const scenarios = project.scenarios;
+        const config = this._config;
+        const {scenarios, timeout} = project;
         const count = scenarios.length;
         const results: (Buffer | Error)[] = new Array(count).fill(null);
 
@@ -251,24 +305,22 @@ export class ScreenshotRunner {
             results[i] = new Error(`event '${event}' wasn't dispatched`);
         }
 
+        let eventCount = 0;
+        let state = WebRunnerState.Running;
+        let error: any = null;
+
+        function onerror(err: any) {
+            error = err;
+            state = WebRunnerState.Error;
+        }
+
         const page = await browser.newPage();
-        page.on('error', (error: any) => {
-            if (config.log & LogLevel.Error) console.error('[browser] ❌ ', error);
-        });
-        page.on('console', async (message: any) => {
-            if (!(config.log & LogLevel.Info)) return;
-            const args = await Promise.all(
-                message.args().map((arg: any) => arg.jsonValue())
-            );
-            if (args.length) {
-                console.log('[browser]', ...args);
-            }
-        });
+        page.on('pageerror', onerror);
+        page.on('error', onerror);
+        page.on('console', this._onBrowserInfoLog);
         page.setViewport({width, height, deviceScaleFactor: 1});
         page.setCacheEnabled(false);
 
-        let eventCount = 0;
-        let watching = false;
         async function processEvent(e: string) {
             if (!eventToScenario.has(e)) {
                 console.warn(`❌ Received non-existing event: '${e}'`);
@@ -284,7 +336,7 @@ export class ScreenshotRunner {
              * closing the browser too fast. */
             ++eventCount;
             /* Watching the scenario allows to debug it */
-            watching = e === config.watch;
+            state = e === config.watch ? WebRunnerState.Watching : state;
         }
 
         await page.exposeFunction('testScreenshot', processEvent);
@@ -304,15 +356,19 @@ export class ScreenshotRunner {
         console.log(`📷 Capturing scenarios...`);
 
         let time = 0;
-        while (!watching && eventCount < count && time < project.timeout) {
+        while (state === WebRunnerState.Running && eventCount < count && time < timeout) {
             const debounceTime = 1000;
             await new Promise((res) => setTimeout(res, debounceTime));
             time += debounceTime;
         }
 
-        if (watching) {
-            console.log(`Watching scenario ${config.watch}...`);
-            await page.waitForNavigation();
+        switch (state as WebRunnerState) {
+            case WebRunnerState.Watching:
+                console.log(`Watching scenario ${config.watch}...`);
+                await page.waitForNavigation();
+                break;
+            case WebRunnerState.Error:
+                throw `Uncaught browser top-level error: ${error}`;
         }
 
         await page.close();

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { CONFIG_NAME, Config, SaveMode, convertReadyEvent } from './config.js';
 import { ScreenshotRunner } from './runner.js';
-import { logError } from './utils.js';
+import { logError, logErrorExit } from './utils.js';
 /**
  * Constants
  */
@@ -17,8 +17,9 @@ function printHelp(summary = false) {
         console.log(`${COMMAND_NAME}\n\n` + 'Screenshot test suite for WonderlandEngine projects\n');
     }
     console.log(`USAGE: ${COMMAND_NAME} <PATH>`);
-    console.log('\nFLAGS:');
+    console.log('\nOPTIONS:');
     console.log('\t-o, --output:\tScreenshot output folder. Overwrites references by default\n' +
+        '\t--logs:\tPath to save the browser logs. Logs will be discarded if not provided\n' +
         '\t--width:\tOverriding screenshot width\n' +
         '\t--height:\tOverriding screenshot height\n');
     console.log('\nFLAGS:');
@@ -39,6 +40,7 @@ try {
             watch: { type: 'string', short: 'w' },
             output: { type: 'string', short: 'o' },
             save: { type: 'boolean', short: 's' },
+            logs: { type: 'string' },
             width: { type: 'string' },
             height: { type: 'string' },
             'save-on-failure': { type: 'boolean' },
@@ -47,7 +49,7 @@ try {
     }));
 }
 catch (e) {
-    console.error(e.message, '\n');
+    logError('Failed to parse command line arguments, reason:', e);
     printHelp(true);
     process.exit(1);
 }
@@ -69,41 +71,41 @@ try {
         config.height = height;
 }
 catch (e) {
-    logError('--width and --height must be integers');
-    process.exit(1);
+    logErrorExit('--width and --height must be integers');
 }
 try {
     await config.load(positionals[0] ?? CONFIG_NAME);
 }
 catch (e) {
-    logError('Failed to load configuration file(s), reason:\n');
-    console.error(e);
-    process.exit(1);
+    logErrorExit('Failed to load configuration file(s), reason:', e);
 }
 try {
     await config.validate();
 }
 catch (e) {
-    logError('Configuration error(s) found:\n');
-    console.error(e);
-    process.exit(1);
+    logErrorExit('Configuration error(s) found:\n', e);
 }
 if (config.watch) {
     const scenario = config.scenarioForEvent(config.watch) ??
         config.scenarioForEvent(convertReadyEvent(config.watch));
     if (!scenario) {
-        logError(`Could not find scenario to watch: '${config.watch}`);
-        process.exit(1);
+        logErrorExit(`Could not find scenario to watch: '${config.watch}`);
     }
     config.watch = scenario.event;
 }
-const runner = new ScreenshotRunner();
+const runner = new ScreenshotRunner(config);
+let exitCode = 0;
 try {
-    const success = await runner.run(config);
-    process.exit(success ? 0 : 1);
+    exitCode = (await runner.run()) ? 0 : 1;
 }
 catch (e) {
-    logError('Got an unexpected error while running the tests:\n');
-    console.error(e);
-    process.exit(1);
+    logErrorExit('Got an unexpected error while running the tests:', e);
 }
+try {
+    if (args.logs)
+        await runner.saveLogs(args.logs);
+}
+catch (e) {
+    logErrorExit('Failed to save browser logs, reason:', e);
+}
+process.exit(exitCode);

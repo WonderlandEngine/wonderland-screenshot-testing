@@ -47,7 +47,20 @@ export async function mkdirp(path) {
  * Log an error on stderr.
  *
  * @param msg Message to log.
+ * @param error The error content to log.
  */
-export function logError(msg) {
+export function logError(msg, error) {
     console.error(`\x1b[31m${msg}\x1b[0m`);
+    if (error)
+        console.error(error);
+}
+/**
+ * Log an error on stderr and exit the process with return code`1`.
+ *
+ * @param msg Message to log.
+ * @param error The error content to log.
+ */
+export function logErrorExit(msg, error) {
+    logError(msg, error);
+    process.exit(1);
 }

@@ -175,5 +175,6 @@ In watch mode, the browser will automatically open and the tests will block when
 |**--save**|_Flag_|Save every screenshot|
 |**-o, --output**|_Path_|Output folder for saved screenshots. References overwritten by default|
 |**-w, --watch**|_String_|Event to watch, i.e., to freeze the runner on|
+|**--logs**|_Path_|Path to store the browser logs. If not provided, logs will be discarded|
 |**--width**|_Number_|Overriding screenshot width|
 |**--height**|_Number_|Overriding screenshot height|
