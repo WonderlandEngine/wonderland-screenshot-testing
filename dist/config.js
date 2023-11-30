@@ -17,6 +17,14 @@ export var SaveMode;
     /** Screenshots will be always be saved. */
     SaveMode[SaveMode["All"] = 2] = "All";
 })(SaveMode || (SaveMode = {}));
+/** Test runner mode. */
+export var RunnerMode;
+(function (RunnerMode) {
+    /** Capture screenshots, but do not perform comparison. */
+    RunnerMode[RunnerMode["Capture"] = 1] = "Capture";
+    /** Capture screenshots and compare to references. */
+    RunnerMode[RunnerMode["CaptureAndCompare"] = 2] = "CaptureAndCompare";
+})(RunnerMode || (RunnerMode = {}));
 /**
  * Convert the 'readyEvent' entry in a configuration
  * into a generic 'event'.
@@ -58,6 +66,7 @@ export class Config {
     projects = [];
     /** Output folder. Outputs to reference file when not provided. */
     output = null;
+    mode = RunnerMode.CaptureAndCompare;
     /** Whether to save the screenshots or not.  */
     save = SaveMode.None;
     /** Overriding screenshot width. */

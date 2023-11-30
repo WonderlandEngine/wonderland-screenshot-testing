@@ -7,10 +7,9 @@ import {launch as puppeteerLauncher, Browser, ConsoleMessage} from 'puppeteer-co
 import {Launcher} from 'chrome-launcher';
 import handler from 'serve-handler';
 
-import {Config, Scenario, Project, SaveMode} from './config.js';
+import {Config, Scenario, Project, SaveMode, RunnerMode} from './config.js';
 import {Dimensions, Image2d, compare} from './image.js';
 import {mkdirp, summarizePath} from './utils.js';
-import {format} from 'node:util';
 
 /** State the runner is currently in. */
 enum WebRunnerState {
@@ -235,45 +234,20 @@ export class ScreenshotRunner {
         });
         const screenshots = pngs.map((s) => (s instanceof Error ? s : parsePNG(s)));
 
-        console.log(`\n✏️  Comparing scenarios...`);
-
-        // @todo: Move into worker
-        const failed: number[] = [];
-        for (let i = 0; i < count; ++i) {
-            const {event, tolerance, perPixelTolerance} = scenarios[i];
-
-            const screenshot = screenshots[i];
-            const reference = references[i];
-            if (screenshot instanceof Error || reference instanceof Error) {
-                failed.push(i);
-                const msg = (screenshot as Error).message ?? (reference as Error).message;
-                console.log(`❌ Scenario '${event}' failed with error:\n  ${msg}`);
-                continue;
-            }
-
-            const res = compare(screenshot, reference);
-            const meanFailed = res.rmse > tolerance;
-            const maxFailed = res.max > perPixelTolerance;
-            if (meanFailed || maxFailed) {
-                failed.push(i);
-                console.log(`❌ Scenario '${event}' failed!`);
-                console.log(`  rmse: ${res.rmse} | tolerance: ${tolerance}`);
-                console.log(`  max: ${res.max} | tolerance: ${perPixelTolerance}`);
-                continue;
-            }
-
-            console.log(`✅ Scenario ${event} passed!`);
+        let failed: number[] = [];
+        if (config.mode !== RunnerMode.Capture) {
+            failed = this._compare(scenarios, screenshots, references);
         }
 
         switch (config.save) {
             case SaveMode.OnFailure: {
                 const failedScenarios = reduce(failed, scenarios);
                 const failedPngs = reduce(failed, pngs);
-                await this._save(config, project, failedScenarios, failedPngs);
+                await this._save(project, failedScenarios, failedPngs);
                 break;
             }
             case SaveMode.All:
-                await this._save(config, project, scenarios, pngs);
+                await this._save(project, scenarios, pngs);
                 break;
         }
 
@@ -318,8 +292,12 @@ export class ScreenshotRunner {
         page.on('pageerror', onerror);
         page.on('error', onerror);
         page.on('console', this._onBrowserInfoLog);
-        page.setViewport({width, height, deviceScaleFactor: 1});
         page.setCacheEnabled(false);
+        page.setViewport({
+            width: width,
+            height: height,
+            deviceScaleFactor: 1,
+        });
 
         async function processEvent(e: string) {
             if (!eventToScenario.has(e)) {
@@ -327,7 +305,10 @@ export class ScreenshotRunner {
                 return;
             }
 
-            const screenshot = await page.screenshot({omitBackground: true});
+            const screenshot = await page.screenshot({
+                omitBackground: false,
+                optimizeForSpeed: false,
+            });
             console.log(`Event '${e}' received`);
 
             results[eventToScenario.get(e)] = screenshot;
@@ -368,12 +349,52 @@ export class ScreenshotRunner {
                 await page.waitForNavigation();
                 break;
             case WebRunnerState.Error:
+                /* @todo: Would be better to fail the test with the error,
+                 * and let the runner go to the next project. */
                 throw `Uncaught browser top-level error: ${error}`;
         }
 
         await page.close();
 
         return results;
+    }
+
+    private _compare(
+        scenarios: Scenario[],
+        screenshots: (Error | Image2d)[],
+        references: (Error | Image2d)[]
+    ) {
+        console.log(`\n✏️  Comparing scenarios...`);
+
+        // @todo: Move into worker
+        const failed: number[] = [];
+        for (let i = 0; i < screenshots.length; ++i) {
+            const {event, tolerance, perPixelTolerance} = scenarios[i];
+
+            const screenshot = screenshots[i];
+            const reference = references[i];
+            if (screenshot instanceof Error || reference instanceof Error) {
+                failed.push(i);
+                const msg = (screenshot as Error).message ?? (reference as Error).message;
+                console.log(`❌ Scenario '${event}' failed with error:\n  ${msg}`);
+                continue;
+            }
+
+            const res = compare(screenshot, reference);
+            const meanFailed = res.rmse > tolerance;
+            const maxFailed = res.max > perPixelTolerance;
+            if (meanFailed || maxFailed) {
+                failed.push(i);
+                console.log(`❌ Scenario '${event}' failed!`);
+                console.log(`  rmse: ${res.rmse} | tolerance: ${tolerance}`);
+                console.log(`  max: ${res.max} | tolerance: ${perPixelTolerance}`);
+                continue;
+            }
+
+            console.log(`✅ Scenario ${event} passed!`);
+        }
+
+        return failed;
     }
 
     /**
@@ -385,13 +406,10 @@ export class ScreenshotRunner {
      * @param pngs The list of pngs (one per scenario).
      * @returns A promise that resolves once all writes are done.
      */
-    private async _save(
-        config: Config,
-        project: Project,
-        scenarios: Scenario[],
-        pngs: (Buffer | Error)[]
-    ) {
+    private async _save(project: Project, scenarios: Scenario[], pngs: (Buffer | Error)[]) {
         if (!scenarios.length) return;
+
+        const config = this._config;
 
         console.log(`\n✏️  Saving scenario references...\n`);
 
