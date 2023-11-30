@@ -3,7 +3,7 @@
 import {resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 
-import {CONFIG_NAME, Config, SaveMode, convertReadyEvent} from './config.js';
+import {CONFIG_NAME, Config, RunnerMode, SaveMode, convertReadyEvent} from './config.js';
 import {ScreenshotRunner} from './runner.js';
 import {logError, logErrorExit} from './utils.js';
 
@@ -16,12 +16,14 @@ interface Arguments {
     output?: string;
     /** Save all captured screenshots. */
     save?: boolean;
-    /** Path to store the logs */
+    /** Path to store the logs. */
     logs?: string;
-    /** Overriding screenshot width */
+    /** Overriding screenshot width. */
     width?: string;
-    /** Overriding screenshot height */
+    /** Overriding screenshot height. */
     height?: string;
+    /** Runner mode. */
+    mode?: string;
     /** Save screenshots associated to failed tests. */
     'save-on-failure'?: boolean;
 }
@@ -78,6 +80,7 @@ try {
             logs: {type: 'string'},
             width: {type: 'string'},
             height: {type: 'string'},
+            mode: {type: 'string', default: 'capture-and-compare'},
             'save-on-failure': {type: 'boolean'},
         },
         allowPositionals: true,
@@ -98,6 +101,8 @@ config.watch = args.watch ?? null;
 config.output = args.output ? resolve(args.output) : null;
 config.save = args['save-on-failure'] ? SaveMode.OnFailure : SaveMode.None;
 config.save = args.save ? SaveMode.All : config.save;
+config.mode =
+    args.mode === 'capture-and-compare' ? RunnerMode.CaptureAndCompare : RunnerMode.Capture;
 try {
     const width = args.width ? parseInt(args.width) : null;
     const height = args.height ? parseInt(args.height) : null;

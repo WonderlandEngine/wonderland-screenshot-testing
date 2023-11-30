@@ -80,6 +80,7 @@ export declare class ScreenshotRunner {
      *    or errors for failed images.
      */
     _captureScreenshots(browser: Browser, project: Project, { width, height }: Dimensions): Promise<(Error | Buffer)[]>;
+    private _compare;
     /**
      * Save the captured references of a list of scenarios.
      *

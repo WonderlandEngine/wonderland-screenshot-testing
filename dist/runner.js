@@ -5,7 +5,7 @@ import { PNG } from 'pngjs';
 import { launch as puppeteerLauncher } from 'puppeteer-core';
 import { Launcher } from 'chrome-launcher';
 import handler from 'serve-handler';
-import { SaveMode } from './config.js';
+import { SaveMode, RunnerMode } from './config.js';
 import { compare } from './image.js';
 import { mkdirp, summarizePath } from './utils.js';
 /** State the runner is currently in. */
@@ -203,40 +203,19 @@ export class ScreenshotRunner {
             height: config.height ?? first?.height ?? 270,
         });
         const screenshots = pngs.map((s) => (s instanceof Error ? s : parsePNG(s)));
-        console.log(`\n✏️  Comparing scenarios...`);
-        // @todo: Move into worker
-        const failed = [];
-        for (let i = 0; i < count; ++i) {
-            const { event, tolerance, perPixelTolerance } = scenarios[i];
-            const screenshot = screenshots[i];
-            const reference = references[i];
-            if (screenshot instanceof Error || reference instanceof Error) {
-                failed.push(i);
-                const msg = screenshot.message ?? reference.message;
-                console.log(`❌ Scenario '${event}' failed with error:\n  ${msg}`);
-                continue;
-            }
-            const res = compare(screenshot, reference);
-            const meanFailed = res.rmse > tolerance;
-            const maxFailed = res.max > perPixelTolerance;
-            if (meanFailed || maxFailed) {
-                failed.push(i);
-                console.log(`❌ Scenario '${event}' failed!`);
-                console.log(`  rmse: ${res.rmse} | tolerance: ${tolerance}`);
-                console.log(`  max: ${res.max} | tolerance: ${perPixelTolerance}`);
-                continue;
-            }
-            console.log(`✅ Scenario ${event} passed!`);
+        let failed = [];
+        if (config.mode !== RunnerMode.Capture) {
+            failed = this._compare(scenarios, screenshots, references);
         }
         switch (config.save) {
             case SaveMode.OnFailure: {
                 const failedScenarios = reduce(failed, scenarios);
                 const failedPngs = reduce(failed, pngs);
-                await this._save(config, project, failedScenarios, failedPngs);
+                await this._save(project, failedScenarios, failedPngs);
                 break;
             }
             case SaveMode.All:
-                await this._save(config, project, scenarios, pngs);
+                await this._save(project, scenarios, pngs);
                 break;
         }
         return !failed.length;
@@ -271,14 +250,21 @@ export class ScreenshotRunner {
         page.on('pageerror', onerror);
         page.on('error', onerror);
         page.on('console', this._onBrowserInfoLog);
-        page.setViewport({ width, height, deviceScaleFactor: 1 });
         page.setCacheEnabled(false);
+        page.setViewport({
+            width: width,
+            height: height,
+            deviceScaleFactor: 1,
+        });
         async function processEvent(e) {
             if (!eventToScenario.has(e)) {
                 console.warn(`❌ Received non-existing event: '${e}'`);
                 return;
             }
-            const screenshot = await page.screenshot({ omitBackground: true });
+            const screenshot = await page.screenshot({
+                omitBackground: false,
+                optimizeForSpeed: false,
+            });
             console.log(`Event '${e}' received`);
             results[eventToScenario.get(e)] = screenshot;
             /* Needs to be set after taking the screenshot to avoid
@@ -313,10 +299,40 @@ export class ScreenshotRunner {
                 await page.waitForNavigation();
                 break;
             case WebRunnerState.Error:
+                /* @todo: Would be better to fail the test with the error,
+                 * and let the runner go to the next project. */
                 throw `Uncaught browser top-level error: ${error}`;
         }
         await page.close();
         return results;
+    }
+    _compare(scenarios, screenshots, references) {
+        console.log(`\n✏️  Comparing scenarios...`);
+        // @todo: Move into worker
+        const failed = [];
+        for (let i = 0; i < screenshots.length; ++i) {
+            const { event, tolerance, perPixelTolerance } = scenarios[i];
+            const screenshot = screenshots[i];
+            const reference = references[i];
+            if (screenshot instanceof Error || reference instanceof Error) {
+                failed.push(i);
+                const msg = screenshot.message ?? reference.message;
+                console.log(`❌ Scenario '${event}' failed with error:\n  ${msg}`);
+                continue;
+            }
+            const res = compare(screenshot, reference);
+            const meanFailed = res.rmse > tolerance;
+            const maxFailed = res.max > perPixelTolerance;
+            if (meanFailed || maxFailed) {
+                failed.push(i);
+                console.log(`❌ Scenario '${event}' failed!`);
+                console.log(`  rmse: ${res.rmse} | tolerance: ${tolerance}`);
+                console.log(`  max: ${res.max} | tolerance: ${perPixelTolerance}`);
+                continue;
+            }
+            console.log(`✅ Scenario ${event} passed!`);
+        }
+        return failed;
     }
     /**
      * Save the captured references of a list of scenarios.
@@ -327,9 +343,10 @@ export class ScreenshotRunner {
      * @param pngs The list of pngs (one per scenario).
      * @returns A promise that resolves once all writes are done.
      */
-    async _save(config, project, scenarios, pngs) {
+    async _save(project, scenarios, pngs) {
         if (!scenarios.length)
             return;
+        const config = this._config;
         console.log(`\n✏️  Saving scenario references...\n`);
         let output = null;
         if (config.output) {

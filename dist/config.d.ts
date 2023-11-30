@@ -13,6 +13,13 @@ export declare enum SaveMode {
     /** Screenshots will be always be saved. */
     All = 2
 }
+/** Test runner mode. */
+export declare enum RunnerMode {
+    /** Capture screenshots, but do not perform comparison. */
+    Capture = 1,
+    /** Capture screenshots and compare to references. */
+    CaptureAndCompare = 2
+}
 /** Test scenario configuration. */
 export interface Scenario {
     event: string;
@@ -43,6 +50,7 @@ export declare class Config {
     projects: Project[];
     /** Output folder. Outputs to reference file when not provided. */
     output: string | null;
+    mode: RunnerMode;
     /** Whether to save the screenshots or not.  */
     save: SaveMode;
     /** Overriding screenshot width. */

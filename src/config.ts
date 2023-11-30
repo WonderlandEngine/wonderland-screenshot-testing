@@ -21,6 +21,14 @@ export enum SaveMode {
     All = 2,
 }
 
+/** Test runner mode. */
+export enum RunnerMode {
+    /** Capture screenshots, but do not perform comparison. */
+    Capture = 1,
+    /** Capture screenshots and compare to references. */
+    CaptureAndCompare = 2,
+}
+
 /** Test scenario configuration. */
 export interface Scenario {
     event: string;
@@ -86,6 +94,9 @@ export class Config {
 
     /** Output folder. Outputs to reference file when not provided. */
     output: string | null = null;
+
+    /** Test runner mode. */
+    mode: RunnerMode = RunnerMode.CaptureAndCompare;
 
     /** Whether to save the screenshots or not.  */
     save: SaveMode = SaveMode.None;
