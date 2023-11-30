@@ -95,6 +95,7 @@ export class Config {
     /** Output folder. Outputs to reference file when not provided. */
     output: string | null = null;
 
+    /** Test runner mode. */
     mode: RunnerMode = RunnerMode.CaptureAndCompare;
 
     /** Whether to save the screenshots or not.  */

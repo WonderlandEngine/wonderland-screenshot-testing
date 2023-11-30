@@ -293,7 +293,7 @@ export class ScreenshotRunner {
         page.on('error', onerror);
         page.on('console', this._onBrowserInfoLog);
         page.setCacheEnabled(false);
-        page.setViewport({
+        await page.setViewport({
             width: width,
             height: height,
             deviceScaleFactor: 1,
@@ -359,6 +359,14 @@ export class ScreenshotRunner {
         return results;
     }
 
+    /**
+     * Compare screenshots against references.
+     *
+     * @param scenarios The scenarios to compare.
+     * @param screenshots The generated screenshots.
+     * @param references Reference images (golden) of each scenario.
+     * @returns An array containing indices of failed comparison.
+     */
     private _compare(
         scenarios: Scenario[],
         screenshots: (Error | Image2d)[],
