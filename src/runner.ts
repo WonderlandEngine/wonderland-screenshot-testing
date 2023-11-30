@@ -1,14 +1,14 @@
 import {createServer} from 'node:http';
-import {mkdir, readFile, stat, writeFile} from 'node:fs/promises';
+import {readFile, writeFile} from 'node:fs/promises';
 import {resolve, join, basename, dirname} from 'node:path';
 
+import {Launcher} from 'chrome-launcher';
 import {PNG} from 'pngjs';
 import {launch as puppeteerLauncher, Browser, ConsoleMessage} from 'puppeteer-core';
-import {Launcher} from 'chrome-launcher';
 import handler from 'serve-handler';
+import pixelmatch from 'pixelmatch';
 
 import {Config, Scenario, Project, SaveMode, RunnerMode} from './config.js';
-import {Dimensions, Image2d, compare} from './image.js';
 import {mkdirp, summarizePath} from './utils.js';
 
 /** State the runner is currently in. */
@@ -61,6 +61,15 @@ function reduce<T>(indices: number[], array: T[]) {
     }
     return result;
 }
+
+export interface Dimensions {
+    width: number;
+    height: number;
+}
+
+export type Image2d = Dimensions & {
+    data: Uint8ClampedArray;
+};
 
 /**
  * Test runner log level.
@@ -388,14 +397,17 @@ export class ScreenshotRunner {
                 continue;
             }
 
-            const res = compare(screenshot, reference);
-            const meanFailed = res.rmse > tolerance;
-            const maxFailed = res.max > perPixelTolerance;
-            if (meanFailed || maxFailed) {
+            const {width, height} = screenshot;
+            const count = pixelmatch(screenshot.data, reference.data, null, width, height, {
+                threshold: perPixelTolerance,
+            });
+            const error = count / (width * height);
+            if (error > tolerance) {
                 failed.push(i);
+                const val = (error * 100).toFixed(2);
+                const expected = (tolerance * 100).toFixed(2);
                 console.log(`❌ Scenario '${event}' failed!`);
-                console.log(`  rmse: ${res.rmse} | tolerance: ${tolerance}`);
-                console.log(`  max: ${res.max} | tolerance: ${perPixelTolerance}`);
+                console.log(`  ${count} different pixels | ${val}% > ${expected}%`);
                 continue;
             }
 
@@ -419,7 +431,7 @@ export class ScreenshotRunner {
 
         const config = this._config;
 
-        console.log(`\n✏️  Saving scenario references...\n`);
+        console.log(`\n✏️  Saving scenario references...`);
 
         let output = null;
         if (config.output) {

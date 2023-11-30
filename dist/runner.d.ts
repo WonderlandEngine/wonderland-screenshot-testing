@@ -1,7 +1,13 @@
 /// <reference types="node" resolution-mode="require"/>
 import { Browser } from 'puppeteer-core';
 import { Config, Project } from './config.js';
-import { Dimensions } from './image.js';
+export interface Dimensions {
+    width: number;
+    height: number;
+}
+export type Image2d = Dimensions & {
+    data: Uint8ClampedArray;
+};
 /**
  * Test runner log level.
  */
@@ -80,6 +86,14 @@ export declare class ScreenshotRunner {
      *    or errors for failed images.
      */
     _captureScreenshots(browser: Browser, project: Project, { width, height }: Dimensions): Promise<(Error | Buffer)[]>;
+    /**
+     * Compare screenshots against references.
+     *
+     * @param scenarios The scenarios to compare.
+     * @param screenshots The generated screenshots.
+     * @param references Reference images (golden) of each scenario.
+     * @returns An array containing indices of failed comparison.
+     */
     private _compare;
     /**
      * Save the captured references of a list of scenarios.

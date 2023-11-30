@@ -24,8 +24,16 @@ export declare enum RunnerMode {
 export interface Scenario {
     event: string;
     reference: string;
-    tolerance: number;
+    /**
+     * Per-pixel threshold. Smaller values make the comparison more sensitive.
+     * Should be in range [0; 1]. Defaults to 0.1
+     */
     perPixelTolerance: number;
+    /**
+     * Percentage of failed pixels allowed.
+     * Should be in range [0; 1]. Defaults to `0.005`, i.e., 0.5% error.
+     */
+    tolerance: number;
 }
 /** Project test configuration. */
 export interface Project {
@@ -50,6 +58,7 @@ export declare class Config {
     projects: Project[];
     /** Output folder. Outputs to reference file when not provided. */
     output: string | null;
+    /** Test runner mode. */
     mode: RunnerMode;
     /** Whether to save the screenshots or not.  */
     save: SaveMode;

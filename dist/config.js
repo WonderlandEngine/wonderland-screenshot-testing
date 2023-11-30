@@ -66,6 +66,7 @@ export class Config {
     projects = [];
     /** Output folder. Outputs to reference file when not provided. */
     output = null;
+    /** Test runner mode. */
     mode = RunnerMode.CaptureAndCompare;
     /** Whether to save the screenshots or not.  */
     save = SaveMode.None;
@@ -110,8 +111,8 @@ export class Config {
         const scenarios = jsonScenarios.map((s) => ({
             event: s.event ?? s.readyEvent ? convertReadyEvent(s.readyEvent) : '',
             reference: resolve(path, s.reference),
-            tolerance: s.tolerance ?? 1,
-            perPixelTolerance: s.perPixelTolerance ?? 16,
+            tolerance: s.tolerance ?? 0.005,
+            perPixelTolerance: s.perPixelTolerance ?? 0.1,
         }));
         this.projects.push({ timeout, path, name, scenarios });
     }

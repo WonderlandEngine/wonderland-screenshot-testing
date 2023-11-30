@@ -33,8 +33,16 @@ export enum RunnerMode {
 export interface Scenario {
     event: string;
     reference: string;
-    tolerance: number;
+    /**
+     * Per-pixel threshold. Smaller values make the comparison more sensitive.
+     * Should be in range [0; 1]. Defaults to 0.1
+     */
     perPixelTolerance: number;
+    /**
+     * Percentage of failed pixels allowed.
+     * Should be in range [0; 1]. Defaults to `0.005`, i.e., 0.5% error.
+     */
+    tolerance: number;
 }
 
 /** Project test configuration. */
@@ -152,8 +160,8 @@ export class Config {
         const scenarios = (jsonScenarios as ScenarioJson[]).map((s) => ({
             event: s.event ?? s.readyEvent ? convertReadyEvent(s.readyEvent) : '',
             reference: resolve(path, s.reference),
-            tolerance: s.tolerance ?? 1,
-            perPixelTolerance: s.perPixelTolerance ?? 16,
+            tolerance: s.tolerance ?? 0.005,
+            perPixelTolerance: s.perPixelTolerance ?? 0.1,
         }));
 
         this.projects.push({timeout, path, name, scenarios});

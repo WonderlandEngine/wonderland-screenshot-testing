@@ -1,12 +1,12 @@
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, join, basename, dirname } from 'node:path';
+import { Launcher } from 'chrome-launcher';
 import { PNG } from 'pngjs';
 import { launch as puppeteerLauncher } from 'puppeteer-core';
-import { Launcher } from 'chrome-launcher';
 import handler from 'serve-handler';
+import pixelmatch from 'pixelmatch';
 import { SaveMode, RunnerMode } from './config.js';
-import { compare } from './image.js';
 import { mkdirp, summarizePath } from './utils.js';
 /** State the runner is currently in. */
 var WebRunnerState;
@@ -251,7 +251,7 @@ export class ScreenshotRunner {
         page.on('error', onerror);
         page.on('console', this._onBrowserInfoLog);
         page.setCacheEnabled(false);
-        page.setViewport({
+        await page.setViewport({
             width: width,
             height: height,
             deviceScaleFactor: 1,
@@ -306,6 +306,14 @@ export class ScreenshotRunner {
         await page.close();
         return results;
     }
+    /**
+     * Compare screenshots against references.
+     *
+     * @param scenarios The scenarios to compare.
+     * @param screenshots The generated screenshots.
+     * @param references Reference images (golden) of each scenario.
+     * @returns An array containing indices of failed comparison.
+     */
     _compare(scenarios, screenshots, references) {
         console.log(`\n✏️  Comparing scenarios...`);
         // @todo: Move into worker
@@ -320,14 +328,17 @@ export class ScreenshotRunner {
                 console.log(`❌ Scenario '${event}' failed with error:\n  ${msg}`);
                 continue;
             }
-            const res = compare(screenshot, reference);
-            const meanFailed = res.rmse > tolerance;
-            const maxFailed = res.max > perPixelTolerance;
-            if (meanFailed || maxFailed) {
+            const { width, height } = screenshot;
+            const count = pixelmatch(screenshot.data, reference.data, null, width, height, {
+                threshold: perPixelTolerance,
+            });
+            const error = count / (width * height);
+            if (error > tolerance) {
                 failed.push(i);
+                const val = (error * 100).toFixed(2);
+                const expected = (tolerance * 100).toFixed(2);
                 console.log(`❌ Scenario '${event}' failed!`);
-                console.log(`  rmse: ${res.rmse} | tolerance: ${tolerance}`);
-                console.log(`  max: ${res.max} | tolerance: ${perPixelTolerance}`);
+                console.log(`  ${count} different pixels | ${val}% > ${expected}%`);
                 continue;
             }
             console.log(`✅ Scenario ${event} passed!`);
@@ -347,7 +358,7 @@ export class ScreenshotRunner {
         if (!scenarios.length)
             return;
         const config = this._config;
-        console.log(`\n✏️  Saving scenario references...\n`);
+        console.log(`\n✏️  Saving scenario references...`);
         let output = null;
         if (config.output) {
             const folder = basename(project.path);
