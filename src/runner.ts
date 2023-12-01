@@ -2,7 +2,6 @@ import {createServer} from 'node:http';
 import {readFile, writeFile} from 'node:fs/promises';
 import {resolve, join, basename, dirname} from 'node:path';
 
-import {Launcher} from 'chrome-launcher';
 import {PNG} from 'pngjs';
 import {launch as puppeteerLauncher, Browser, ConsoleMessage} from 'puppeteer-core';
 import handler from 'serve-handler';
@@ -156,22 +155,11 @@ export class ScreenshotRunner {
 
         console.log(`Starting test server on port: ${config.port}`);
 
-        const executablePath = Launcher.getFirstInstallation();
-        if (!executablePath) {
-            server.close();
-            throw new Error(
-                'Could not automatically find any installation of Chrome using chrome-launcher. ' +
-                    'Set the CHROME_PATH variable to help chrome-launcher find it'
-            );
-        }
-
-        console.log(`Chrome executable: ${summarizePath(executablePath)}`);
-
         const headless = !config.watch;
-
         const browser = await puppeteerLauncher({
             headless,
-            executablePath,
+            /* Prefer chrome since canary rendering isn't always working */
+            channel: 'chrome',
             devtools: !headless,
             waitForInitialPage: true,
             args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
