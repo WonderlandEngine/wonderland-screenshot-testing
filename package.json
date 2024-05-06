@@ -10,10 +10,11 @@
   "bin": {
     "wle-screenshot-testing": "./dist/cli.js"
   },
+  "prettier": "@wonderlandengine/prettier-config",
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node dist/cli.js",
-    "pretty": "prettier --config ./prettierrc.json --write \"src/**/*.ts\""
+    "pretty": "prettier --write \"./src/**/*.{js,ts}\""
   },
   "dependencies": {
     "@types/node": "^18.11.9",
@@ -26,7 +27,8 @@
     "serve-handler": "^6.1.5"
   },
   "devDependencies": {
-    "prettier": "^3.0.3",
+    "@wonderlandengine/prettier-config": "^1.0.0",
+    "prettier": "^3.2.5",
     "typescript": "^5.2.2"
   }
 }
