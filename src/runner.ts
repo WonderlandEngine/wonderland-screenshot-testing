@@ -161,6 +161,7 @@ export class ScreenshotRunner {
             /* Prefer chrome since canary rendering isn't always working */
             channel: 'chrome',
             devtools: !headless,
+            timeout: !config.watch ? 30000 : 0,
             waitForInitialPage: true,
             args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
         });
@@ -346,9 +347,17 @@ export class ScreenshotRunner {
                 await page.waitForNavigation();
                 break;
             case WebRunnerState.Error:
-                /* @todo: Would be better to fail the test with the error,
+                /** @todo: Would be better to fail the test with the error,
                  * and let the runner go to the next project. */
-                throw `Uncaught browser top-level error: ${error}`;
+                if (!config.watch) {
+                    const errorStr = error.stack
+                        ? `Stacktrace:\n${error.stack}`
+                        : error + '';
+                    throw `Uncaught browser top-level error: ${errorStr}`;
+                }
+                /* When using the watch mode, stop on any top-level error. */
+                await page.waitForNavigation();
+                break;
         }
 
         await page.close();
