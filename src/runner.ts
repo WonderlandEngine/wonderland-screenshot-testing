@@ -349,7 +349,12 @@ export class ScreenshotRunner {
             case WebRunnerState.Error:
                 /** @todo: Would be better to fail the test with the error,
                  * and let the runner go to the next project. */
-                if (!config.watch) throw `Uncaught browser top-level error: ${error}`;
+                if (!config.watch) {
+                    const errorStr = error.stack
+                        ? `Stacktrace:\n${error.stack}`
+                        : error + '';
+                    throw `Uncaught browser top-level error: ${errorStr}`;
+                }
                 /* When using the watch mode, stop on any top-level error. */
                 await page.waitForNavigation();
                 break;
