@@ -1,10 +1,9 @@
 import {createServer} from 'node:http';
-import {parse as parseURL} from 'node:url';
 import {readFile, writeFile} from 'node:fs/promises';
 import {resolve, join, basename, dirname} from 'node:path';
 
 import {PNG} from 'pngjs';
-import {launch as puppeteerLauncher, ConsoleMessage, BrowserContext} from 'puppeteer-core';
+import {launch as puppeteerLauncher, Browser, ConsoleMessage} from 'puppeteer-core';
 import handler from 'serve-handler';
 import pixelmatch from 'pixelmatch';
 
@@ -117,6 +116,9 @@ export class ScreenshotRunner {
     /** Configuration to run. @hidden */
     private _config: Config;
 
+    /** Base path to serve. @hidden */
+    private _currentBasePath = '';
+
     /** Dispatch an info log coming from the browser. @hidden */
     private _onBrowserInfoLog = (message: ConsoleMessage) => {
         const msg = message.text();
@@ -145,13 +147,9 @@ export class ScreenshotRunner {
 
         const config = this._config;
         const server = createServer((request, response) => {
-            const header = request.headers['test-project'] ?? '';
-            const projectId = parseInt(Array.isArray(header) ? header[0] : header);
-            if (isNaN(projectId)) return handler(request, response);
-
-            const project = config.projects[projectId];
-            const path = resolve(project.path, 'deploy');
-            return handler(request, response, {public: path});
+            return handler(request, response, {
+                public: this._currentBasePath,
+            });
         });
         server.listen(config.port);
 
@@ -168,44 +166,22 @@ export class ScreenshotRunner {
             args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
         });
 
-        const maxContexts = Math.min(config.projects.length, config.maxContexts);
-
-        const contexts: (BrowserContext | null)[] = await Promise.all(
-            Array.from({length: maxContexts})
-                .fill(null)
-                .map((_) => browser.createIncognitoBrowserContext())
-        );
-
-        const promises = [];
-        for (let i = 0; i < config.projects.length; ++i) {
-            let freeContext = -1;
-            while ((freeContext = contexts.findIndex((x) => x !== null)) === -1) {
-                await new Promise((res) => setTimeout(res, 500));
-            }
-
-            console.log(
-                `NEW CONTEXT ${freeContext} for project ${config.projects[i].name}`
-            );
-            /* We do not test multiple pages simultaneously to prevent
-             * the animation loop to stop. */
-            const context = contexts[freeContext]!;
-            if (context === null) throw new Error('null context');
-            contexts[freeContext] = null;
-
-            const p = this._runTests(i, context).finally(
-                () => (contexts[freeContext] = context)
-            );
-            promises.push(p);
-        }
-
+        let success = true;
         try {
-            return (await Promise.all(promises)).indexOf(false) === -1;
+            for (const project of config.projects) {
+                /* We do not test multiple pages simultaneously to prevent
+                 * the animation loop to stop. */
+                const result = await this._runTests(project, browser);
+                success &&= result;
+            }
         } catch (e) {
             throw e;
         } finally {
             server.close();
             browser.close();
         }
+
+        return success;
     }
 
     /**
@@ -231,10 +207,10 @@ export class ScreenshotRunner {
      * @returns A promise that resolves to `true` if all tests passed,
      *     `false` otherwise.
      */
-    async _runTests(projectId: number, browser: BrowserContext): Promise<boolean> {
-        const config = this._config;
+    async _runTests(project: Project, browser: Browser): Promise<boolean> {
+        this._currentBasePath = resolve(project.path, 'deploy');
 
-        const project = config.projects[projectId];
+        const config = this._config;
         const scenarios = project.scenarios;
         const count = scenarios.length;
 
@@ -250,7 +226,7 @@ export class ScreenshotRunner {
             | undefined;
 
         /* Capture page screenshots upon events coming from the application. */
-        const pngs = await this._captureScreenshots(browser, projectId, {
+        const pngs = await this._captureScreenshots(browser, project, {
             width: config.width ?? first?.width ?? 480,
             height: config.height ?? first?.height ?? 270,
         });
@@ -285,13 +261,11 @@ export class ScreenshotRunner {
      *    or errors for failed images.
      */
     async _captureScreenshots(
-        browser: BrowserContext,
-        projectId: number,
+        browser: Browser,
+        project: Project,
         {width, height}: Dimensions
     ) {
         const config = this._config;
-
-        const project = config.projects[projectId];
         const {scenarios, timeout} = project;
         const count = scenarios.length;
         const results: (Buffer | Error)[] = new Array(count).fill(null);
@@ -317,9 +291,6 @@ export class ScreenshotRunner {
         page.on('error', onerror);
         page.on('console', this._onBrowserInfoLog);
         page.setCacheEnabled(false);
-        page.setExtraHTTPHeaders({
-            'test-project': projectId.toString(),
-        });
         await page.setViewport({
             width: width,
             height: height,
