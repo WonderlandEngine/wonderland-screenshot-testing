@@ -163,6 +163,7 @@ export class ScreenshotRunner {
         this.logs.length = 0;
 
         const config = this._config;
+        const projects = config.projects;
         if (config.output) await mkdirp(config.output);
 
         /* Start loading references for each project */
@@ -170,8 +171,8 @@ export class ScreenshotRunner {
             config.projects,
             () => null!
         );
-        for (let i = 0; i < config.projects.length; ++i) {
-            const project = config.projects[i];
+        for (let i = 0; i < projects.length; ++i) {
+            const project = projects[i];
             referencesPending[i] = loadReferences(project.scenarios);
         }
 
@@ -191,7 +192,7 @@ export class ScreenshotRunner {
             args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
         });
 
-        console.log(`\n📷 Capturing scenarios for ${config.projects.length} project(s)...`);
+        console.log(`\n📷 Capturing scenarios for ${projects.length} project(s)...`);
         const screenshotsPending = this._capture(browser);
 
         /* While we could wait simultaneously for screenshots and references, loading the pngs
@@ -206,32 +207,36 @@ export class ScreenshotRunner {
         browser.close();
 
         /* Compare screenshots to references */
-        let success = true;
-        for (let i = 0; i < config.projects.length; ++i) {
-            const project = config.projects[i];
-            console.log(
-                `\n✏️  Comparing ${project.scenarios.length} scenarios in project '${project.name}'...`
-            );
+        const failures: number[][] = Array.from(projects, () => []);
+        for (let i = 0; i < projects.length; ++i) {
+            const {name, scenarios} = projects[i];
+            const count = scenarios.length;
+            console.log(`\n❔ Comparing ${count} scenarios in project '${name}'...`);
 
-            let failed: number[] = [];
-            if (config.mode !== RunnerMode.Capture) {
-                failed = this._compare(project.scenarios, screenshots[i], references[i]);
-            }
-
-            switch (config.save) {
-                case SaveMode.OnFailure: {
-                    const failedScenarios = reduce(failed, project.scenarios);
-                    const failedPngs = reduce(failed, pngs);
-                    await this._save(project, failedScenarios, failedPngs);
-                    break;
-                }
-                case SaveMode.All:
-                    await this._save(project, project.scenarios, pngs[i]);
-                    break;
-            }
-
-            success = success && !failed.length;
+            if (config.mode !== RunnerMode.CaptureAndCompare) continue;
+            failures[i] = this._compare(scenarios, screenshots[i], references[i]);
         }
+        const success = failures.findIndex((a) => a.length) === -1;
+
+        /* Save screenshots to disk based on the config saving mode */
+        let toSave: Promise<void>[] = [];
+        if (config.save === SaveMode.OnFailure) {
+            toSave = projects.map((project, i) => {
+                const failedScenarios = reduce(failures[i], project.scenarios);
+                const failedPngs = reduce(failures[i], pngs[i]);
+                return this._save(project, failedScenarios, failedPngs);
+            });
+        } else {
+            toSave = projects.map((proj, i) => this._save(proj, proj.scenarios, pngs[i]));
+        }
+
+        if (
+            config.save === SaveMode.All ||
+            (config.save === SaveMode.OnFailure && !success)
+        ) {
+            console.log(`\n✏️  Saving scenario references...`);
+        }
+        await Promise.all(toSave);
 
         return success;
     }
@@ -455,8 +460,6 @@ export class ScreenshotRunner {
 
         const config = this._config;
 
-        console.log(`\n✏️  Saving scenario references...`);
-
         let output = null;
         if (config.output) {
             const folder = basename(project.path);
@@ -483,6 +486,6 @@ export class ScreenshotRunner {
             );
         }
 
-        return Promise.all(promises);
+        return Promise.all(promises).then(() => {});
     }
 }
