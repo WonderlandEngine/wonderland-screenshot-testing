@@ -1,9 +1,15 @@
-import {createServer} from 'node:http';
+import {IncomingMessage, ServerResponse, createServer} from 'node:http';
+import {parse as parseURL} from 'node:url';
 import {readFile, writeFile} from 'node:fs/promises';
 import {resolve, join, basename, dirname} from 'node:path';
 
 import {PNG} from 'pngjs';
-import {launch as puppeteerLauncher, Browser, ConsoleMessage} from 'puppeteer-core';
+import {
+    launch as puppeteerLauncher,
+    ConsoleMessage,
+    BrowserContext,
+    Browser,
+} from 'puppeteer-core';
 import handler from 'serve-handler';
 import pixelmatch from 'pixelmatch';
 
@@ -113,19 +119,30 @@ export class ScreenshotRunner {
     /** Browser logs */
     logs: string[] = [];
 
-    /** Configuration to run. @hidden */
+    /** Configuration to run. */
     private _config: Config;
 
-    /** Base path to serve. @hidden */
-    private _currentBasePath = '';
-
-    /** Dispatch an info log coming from the browser. @hidden */
+    /** Dispatch an info log coming from the browser. */
     private _onBrowserInfoLog = (message: ConsoleMessage) => {
         const msg = message.text();
         const type = message.type() as 'log' | 'warn' | 'error';
         const level = LogTypeToLevel[type as keyof typeof LogTypeToLevel];
         this.logs.push(`[${message.type()}] ${msg}`);
         if (this._config.log & level) console[type](`[browser] ${msg}`);
+    };
+
+    /** HTTP server callback. */
+    private _httpCallback = (
+        req: IncomingMessage,
+        response: ServerResponse<IncomingMessage>
+    ) => {
+        const header = req.headers['test-project'] ?? '';
+        const projectId = parseInt(Array.isArray(header) ? header[0] : header);
+        if (isNaN(projectId)) return handler(req, response);
+
+        const project = this._config.projects[projectId];
+        const path = resolve(project.path, 'deploy');
+        return handler(req, response, {public: path});
     };
 
     /**
@@ -146,14 +163,22 @@ export class ScreenshotRunner {
         this.logs.length = 0;
 
         const config = this._config;
-        const server = createServer((request, response) => {
-            return handler(request, response, {
-                public: this._currentBasePath,
-            });
-        });
-        server.listen(config.port);
+        if (config.output) await mkdirp(config.output);
 
+        /* Start loading references for each project */
+        const referencesPending: Promise<(Image2d | Error)[]>[] = Array.from(
+            config.projects,
+            () => null!
+        );
+        for (let i = 0; i < config.projects.length; ++i) {
+            const project = config.projects[i];
+            referencesPending[i] = loadReferences(project.scenarios);
+        }
+
+        /* Start capturing screenshots for each project */
         console.log(`Starting test server on port: ${config.port}`);
+        const server = createServer(this._httpCallback);
+        server.listen(config.port);
 
         const headless = !config.watch;
         const browser = await puppeteerLauncher({
@@ -166,19 +191,46 @@ export class ScreenshotRunner {
             args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
         });
 
+        console.log(`\n📷 Capturing scenarios for ${config.projects.length} project(s)...`);
+        const screenshotsPending = this._capture(browser);
+
+        /* While we could wait simultaneously for screenshots and references, loading the pngs
+         * should be must faster and be done by now anyway. */
+        const references = await Promise.all(referencesPending);
+        const pngs = await screenshotsPending;
+        const screenshots = pngs.map((p) =>
+            p.map((s) => (s instanceof Error ? s : parsePNG(s)))
+        );
+
+        server.close();
+        browser.close();
+
+        /* Compare screenshots to references */
         let success = true;
-        try {
-            for (const project of config.projects) {
-                /* We do not test multiple pages simultaneously to prevent
-                 * the animation loop to stop. */
-                const result = await this._runTests(project, browser);
-                success &&= result;
+        for (let i = 0; i < config.projects.length; ++i) {
+            const project = config.projects[i];
+            console.log(
+                `\n✏️  Comparing ${project.scenarios.length} scenarios in project '${project.name}'...`
+            );
+
+            let failed: number[] = [];
+            if (config.mode !== RunnerMode.Capture) {
+                failed = this._compare(project.scenarios, screenshots[i], references[i]);
             }
-        } catch (e) {
-            throw e;
-        } finally {
-            server.close();
-            browser.close();
+
+            switch (config.save) {
+                case SaveMode.OnFailure: {
+                    const failedScenarios = reduce(failed, project.scenarios);
+                    const failedPngs = reduce(failed, pngs);
+                    await this._save(project, failedScenarios, failedPngs);
+                    break;
+                }
+                case SaveMode.All:
+                    await this._save(project, project.scenarios, pngs[i]);
+                    break;
+            }
+
+            success = success && !failed.length;
         }
 
         return success;
@@ -199,57 +251,34 @@ export class ScreenshotRunner {
         return writeFile(fullpath, content);
     }
 
-    /**
-     * Run the tests of a given project.
-     *
-     * @param project The project to run the scenarios from.
-     * @param browser Browser instance.
-     * @returns A promise that resolves to `true` if all tests passed,
-     *     `false` otherwise.
-     */
-    async _runTests(project: Project, browser: Browser): Promise<boolean> {
-        this._currentBasePath = resolve(project.path, 'deploy');
+    private async _capture(browser: Browser) {
+        const projects = this._config.projects;
+        const maxContexts = Math.min(projects.length, this._config.maxContexts);
 
-        const config = this._config;
-        const scenarios = project.scenarios;
-        const count = scenarios.length;
+        const contexts: (BrowserContext | null)[] = await Promise.all(
+            Array.from({length: maxContexts})
+                .fill(null)
+                .map((_) => browser.createIncognitoBrowserContext())
+        );
 
-        console.log(`\n📎 Running project ${project.name} with ${count} scenarios\n`);
+        const result: Promise<(Buffer | Error)[]>[] = Array.from(projects, () => null!);
 
-        if (config.output) await mkdirp(config.output);
-
-        /* Load references first to validate their size. */
-        const references = await loadReferences(scenarios);
-
-        const first = references.find((img) => !(img instanceof Error)) as
-            | Image2d
-            | undefined;
-
-        /* Capture page screenshots upon events coming from the application. */
-        const pngs = await this._captureScreenshots(browser, project, {
-            width: config.width ?? first?.width ?? 480,
-            height: config.height ?? first?.height ?? 270,
-        });
-        const screenshots = pngs.map((s) => (s instanceof Error ? s : parsePNG(s)));
-
-        let failed: number[] = [];
-        if (config.mode !== RunnerMode.Capture) {
-            failed = this._compare(scenarios, screenshots, references);
-        }
-
-        switch (config.save) {
-            case SaveMode.OnFailure: {
-                const failedScenarios = reduce(failed, scenarios);
-                const failedPngs = reduce(failed, pngs);
-                await this._save(project, failedScenarios, failedPngs);
-                break;
+        for (let i = 0; i < projects.length; ++i) {
+            let freeContext = -1;
+            while ((freeContext = contexts.findIndex((x) => x !== null)) === -1) {
+                await new Promise((res) => setTimeout(res, 500));
             }
-            case SaveMode.All:
-                await this._save(project, scenarios, pngs);
-                break;
+
+            const context = contexts[freeContext]!;
+            if (context === null) throw new Error('null context');
+            contexts[freeContext] = null;
+
+            result[i] = this._captureProjectScreenshots(context, i, projects[i]).finally(
+                () => (contexts[freeContext] = context)
+            );
         }
 
-        return !failed.length;
+        return Promise.all(result);
     }
 
     /**
@@ -260,9 +289,9 @@ export class ScreenshotRunner {
      * @returns An array of promise that resolve with the data for loaded images,
      *    or errors for failed images.
      */
-    async _captureScreenshots(
-        browser: Browser,
-        project: Project,
+    private async _captureProjectScreenshots(
+        browser: BrowserContext,
+        projectId: number,
         {width, height}: Dimensions
     ) {
         const config = this._config;
@@ -299,7 +328,7 @@ export class ScreenshotRunner {
 
         async function processEvent(e: string) {
             if (!eventToScenario.has(e)) {
-                console.warn(`❌ Received non-existing event: '${e}'`);
+                console.warn(`[${project.name}] Received non-existing event: '${e}' ❌`);
                 return;
             }
 
@@ -307,7 +336,7 @@ export class ScreenshotRunner {
                 omitBackground: false,
                 optimizeForSpeed: false,
             });
-            console.log(`Event '${e}' received`);
+            console.log(`[${project.name}] Event '${e}' received`);
 
             results[eventToScenario.get(e)] = screenshot;
 
@@ -332,8 +361,6 @@ export class ScreenshotRunner {
             });
         });
 
-        console.log(`📷 Capturing scenarios...`);
-
         let time = 0;
         while (state === WebRunnerState.Running && eventCount < count && time < timeout) {
             const debounceTime = 1000;
@@ -353,7 +380,9 @@ export class ScreenshotRunner {
                     const errorStr = error.stack
                         ? `Stacktrace:\n${error.stack}`
                         : error + '';
-                    throw `Uncaught browser top-level error: ${errorStr}`;
+                    console.error(
+                        `[${project.name}] Uncaught browser top-level error: ${errorStr}`
+                    );
                 }
                 /* When using the watch mode, stop on any top-level error. */
                 await page.waitForNavigation();
@@ -378,8 +407,6 @@ export class ScreenshotRunner {
         screenshots: (Error | Image2d)[],
         references: (Error | Image2d)[]
     ) {
-        console.log(`\n✏️  Comparing scenarios...`);
-
         // @todo: Move into worker
         const failed: number[] = [];
         for (let i = 0; i < screenshots.length; ++i) {

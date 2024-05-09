@@ -18,10 +18,6 @@ interface Arguments {
     save?: boolean;
     /** Path to store the logs. */
     logs?: string;
-    /** Overriding screenshot width. */
-    width?: string;
-    /** Overriding screenshot height. */
-    height?: string;
     /** Runner mode. */
     mode?: string;
     /** Save screenshots associated to failed tests. */
@@ -49,9 +45,8 @@ function printHelp(summary = false) {
     console.log('\nOPTIONS:');
     console.log(
         '\t-o, --output:\tScreenshot output folder. Overwrites references by default\n' +
-            '\t--logs:\tPath to save the browser logs. Logs will be discarded if not provided\n' +
-            '\t--width:\tOverriding screenshot width\n' +
-            '\t--height:\tOverriding screenshot height\n'
+            '\t--mode:\tCapture and compare (`capture-and-compare`), or capture only (`capture`)\n' +
+            '\t--logs:\tPath to save the browser logs. Logs will be discarded if not provided\n'
     );
 
     console.log('\nFLAGS:');
@@ -78,8 +73,6 @@ try {
             output: {type: 'string', short: 'o'},
             save: {type: 'boolean', short: 's'},
             logs: {type: 'string'},
-            width: {type: 'string'},
-            height: {type: 'string'},
             mode: {type: 'string', default: 'capture-and-compare'},
             'save-on-failure': {type: 'boolean'},
         },
@@ -103,14 +96,6 @@ config.save = args['save-on-failure'] ? SaveMode.OnFailure : SaveMode.None;
 config.save = args.save ? SaveMode.All : config.save;
 config.mode =
     args.mode === 'capture-and-compare' ? RunnerMode.CaptureAndCompare : RunnerMode.Capture;
-try {
-    const width = args.width ? parseInt(args.width) : null;
-    const height = args.height ? parseInt(args.height) : null;
-    if (width) config.width = width;
-    if (height) config.height = height;
-} catch (e) {
-    logErrorExit('--width and --height must be integers');
-}
 
 try {
     await config.load(positionals[0] ?? CONFIG_NAME);
