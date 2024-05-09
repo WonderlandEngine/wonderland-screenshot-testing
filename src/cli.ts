@@ -20,6 +20,8 @@ interface Arguments {
     logs?: string;
     /** Runner mode. */
     mode?: string;
+    /** Maximum number of parralel browser instances. */
+    'max-contexts'?: string;
     /** Save screenshots associated to failed tests. */
     'save-on-failure'?: boolean;
 }
@@ -46,6 +48,7 @@ function printHelp(summary = false) {
     console.log(
         '\t-o, --output:\tScreenshot output folder. Overwrites references by default\n' +
             '\t--mode:\tCapture and compare (`capture-and-compare`), or capture only (`capture`)\n' +
+            '\t--max-contexts:\tMaximum number of parralel browser instances. Up to one per project.\n' +
             '\t--logs:\tPath to save the browser logs. Logs will be discarded if not provided\n'
     );
 
@@ -74,6 +77,7 @@ try {
             save: {type: 'boolean', short: 's'},
             logs: {type: 'string'},
             mode: {type: 'string', default: 'capture-and-compare'},
+            'max-contexts': {type: 'string'},
             'save-on-failure': {type: 'boolean'},
         },
         allowPositionals: true,
@@ -89,6 +93,8 @@ if (args.help) {
     process.exit(0);
 }
 
+const maxContexts = args['max-contexts'] ? parseInt(args['max-contexts']) : null;
+
 const config = new Config();
 config.watch = args.watch ?? null;
 config.output = args.output ? resolve(args.output) : null;
@@ -96,6 +102,7 @@ config.save = args['save-on-failure'] ? SaveMode.OnFailure : SaveMode.None;
 config.save = args.save ? SaveMode.All : config.save;
 config.mode =
     args.mode === 'capture-and-compare' ? RunnerMode.CaptureAndCompare : RunnerMode.Capture;
+config.maxContexts = maxContexts && !isNaN(maxContexts) ? maxContexts : null;
 
 try {
     await config.load(positionals[0] ?? CONFIG_NAME);

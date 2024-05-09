@@ -1,8 +1,9 @@
 import { createServer } from 'node:http';
+import { cpus } from 'node:os';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, join, basename, dirname } from 'node:path';
 import { PNG } from 'pngjs';
-import { launch as puppeteerLauncher } from 'puppeteer-core';
+import { launch as puppeteerLauncher, } from 'puppeteer-core';
 import handler from 'serve-handler';
 import pixelmatch from 'pixelmatch';
 import { SaveMode, RunnerMode } from './config.js';
@@ -95,11 +96,11 @@ const LogTypeToLevel = {
 export class ScreenshotRunner {
     /** Browser logs */
     logs = [];
-    /** Configuration to run. @hidden */
+    /** Configuration to run. */
     _config;
-    /** Base path to serve. @hidden */
-    _currentBasePath = '';
-    /** Dispatch an info log coming from the browser. @hidden */
+    /** Browser context debounce time. */
+    _contextDebounce = 750;
+    /** Dispatch an info log coming from the browser. */
     _onBrowserInfoLog = (message) => {
         const msg = message.text();
         const type = message.type();
@@ -107,6 +108,16 @@ export class ScreenshotRunner {
         this.logs.push(`[${message.type()}] ${msg}`);
         if (this._config.log & level)
             console[type](`[browser] ${msg}`);
+    };
+    /** HTTP server callback. */
+    _httpCallback = (req, response) => {
+        const header = req.headers['test-project'] ?? '';
+        const projectId = parseInt(Array.isArray(header) ? header[0] : header);
+        if (isNaN(projectId))
+            return handler(req, response);
+        const project = this._config.projects[projectId];
+        const path = resolve(project.path, 'deploy');
+        return handler(req, response, { public: path });
     };
     /**
      * Create a new runner.
@@ -124,13 +135,19 @@ export class ScreenshotRunner {
     async run() {
         this.logs.length = 0;
         const config = this._config;
-        const server = createServer((request, response) => {
-            return handler(request, response, {
-                public: this._currentBasePath,
-            });
-        });
-        server.listen(config.port);
+        const projects = config.projects;
+        if (config.output)
+            await mkdirp(config.output);
+        /* Start loading references for each project */
+        const referencesPending = Array.from(config.projects, () => null);
+        for (let i = 0; i < projects.length; ++i) {
+            const project = projects[i];
+            referencesPending[i] = loadReferences(project.scenarios);
+        }
+        /* Start capturing screenshots for each project */
         console.log(`Starting test server on port: ${config.port}`);
+        const server = createServer(this._httpCallback);
+        server.listen(config.port);
         const headless = !config.watch;
         const browser = await puppeteerLauncher({
             headless,
@@ -141,22 +158,42 @@ export class ScreenshotRunner {
             waitForInitialPage: true,
             args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
         });
-        let success = true;
-        try {
-            for (const project of config.projects) {
-                /* We do not test multiple pages simultaneously to prevent
-                 * the animation loop to stop. */
-                const result = await this._runTests(project, browser);
-                success &&= result;
-            }
+        const screenshotsPending = this._capture(browser);
+        /* While we could wait simultaneously for screenshots and references, loading the pngs
+         * should be must faster and be done by now anyway. */
+        const references = await Promise.all(referencesPending);
+        const pngs = await screenshotsPending;
+        const screenshots = pngs.map((p) => p.map((s) => (s instanceof Error ? s : parsePNG(s))));
+        server.close();
+        browser.close();
+        /* Compare screenshots to references */
+        const failures = Array.from(projects, () => []);
+        for (let i = 0; i < projects.length; ++i) {
+            const { name, scenarios } = projects[i];
+            const count = scenarios.length;
+            console.log(`\n❔ Comparing ${count} scenarios in project '${name}'...`);
+            if (config.mode !== RunnerMode.CaptureAndCompare)
+                continue;
+            failures[i] = this._compare(scenarios, screenshots[i], references[i]);
         }
-        catch (e) {
-            throw e;
+        const success = failures.findIndex((a) => a.length) === -1;
+        /* Save screenshots to disk based on the config saving mode */
+        const { save } = config;
+        let toSave = [];
+        if (save === SaveMode.OnFailure) {
+            toSave = projects.map((project, i) => {
+                const failedScenarios = reduce(failures[i], project.scenarios);
+                const failedPngs = reduce(failures[i], pngs[i]);
+                return this._save(project, failedScenarios, failedPngs);
+            });
         }
-        finally {
-            server.close();
-            browser.close();
+        else {
+            toSave = projects.map((proj, i) => this._save(proj, proj.scenarios, pngs[i]));
         }
+        if (save === SaveMode.All || (save === SaveMode.OnFailure && !success)) {
+            console.log(`\n✏️  Saving scenario references...`);
+        }
+        await Promise.all(toSave);
         return success;
     }
     /**
@@ -173,46 +210,34 @@ export class ScreenshotRunner {
         return writeFile(fullpath, content);
     }
     /**
-     * Run the tests of a given project.
+     * Capture screenshots in a browser using one/multiple context(s).
      *
-     * @param project The project to run the scenarios from.
-     * @param browser Browser instance.
-     * @returns A promise that resolves to `true` if all tests passed,
-     *     `false` otherwise.
+     * @param browser The browser instance.
+     * @returns Array of screenshots **per** project.
      */
-    async _runTests(project, browser) {
-        this._currentBasePath = resolve(project.path, 'deploy');
-        const config = this._config;
-        const scenarios = project.scenarios;
-        const count = scenarios.length;
-        console.log(`\n📎 Running project ${project.name} with ${count} scenarios\n`);
-        if (config.output)
-            await mkdirp(config.output);
-        /* Load references first to validate their size. */
-        const references = await loadReferences(scenarios);
-        const first = references.find((img) => !(img instanceof Error));
-        /* Capture page screenshots upon events coming from the application. */
-        const pngs = await this._captureScreenshots(browser, project, {
-            width: config.width ?? first?.width ?? 480,
-            height: config.height ?? first?.height ?? 270,
-        });
-        const screenshots = pngs.map((s) => (s instanceof Error ? s : parsePNG(s)));
-        let failed = [];
-        if (config.mode !== RunnerMode.Capture) {
-            failed = this._compare(scenarios, screenshots, references);
-        }
-        switch (config.save) {
-            case SaveMode.OnFailure: {
-                const failedScenarios = reduce(failed, scenarios);
-                const failedPngs = reduce(failed, pngs);
-                await this._save(project, failedScenarios, failedPngs);
-                break;
+    async _capture(browser) {
+        const { projects, maxContexts } = this._config;
+        const contextsUpperBound = maxContexts ?? Math.min(Math.max(2, cpus().length), 6);
+        const contextsCount = Math.min(projects.length, contextsUpperBound);
+        console.log(`\n📷 Capturing scenarios for ${projects.length} project(s)...`);
+        console.log(`  Using ${contextsCount} browser instances`);
+        const contexts = await Promise.all(Array.from({ length: contextsCount })
+            .fill(null)
+            .map((_) => browser.createIncognitoBrowserContext()));
+        const result = Array.from(projects, () => null);
+        for (let i = 0; i < projects.length; ++i) {
+            let freeContext = -1;
+            while ((freeContext = contexts.findIndex((x) => x !== null)) === -1) {
+                /* Yield the event loop to allow checking for free contexts. */
+                await new Promise((res) => setTimeout(res, this._contextDebounce));
             }
-            case SaveMode.All:
-                await this._save(project, scenarios, pngs);
-                break;
+            const context = contexts[freeContext];
+            if (context === null)
+                throw new Error('null context');
+            contexts[freeContext] = null; /* Marks context as used */
+            result[i] = this._captureProjectScreenshots(context, i, projects[i]).finally(() => (contexts[freeContext] = context));
         }
-        return !failed.length;
+        return Promise.all(result);
     }
     /**
      * Capture the screenshots for a project.
@@ -222,8 +247,9 @@ export class ScreenshotRunner {
      * @returns An array of promise that resolve with the data for loaded images,
      *    or errors for failed images.
      */
-    async _captureScreenshots(browser, project, { width, height }) {
+    async _captureProjectScreenshots(browser, projectId, { width, height }) {
         const config = this._config;
+        const project = config.projects[projectId];
         const { scenarios, timeout } = project;
         const count = scenarios.length;
         const results = new Array(count).fill(null);
@@ -245,6 +271,9 @@ export class ScreenshotRunner {
         page.on('error', onerror);
         page.on('console', this._onBrowserInfoLog);
         page.setCacheEnabled(false);
+        page.setExtraHTTPHeaders({
+            'test-project': projectId.toString(),
+        });
         await page.setViewport({
             width: width,
             height: height,
@@ -252,14 +281,14 @@ export class ScreenshotRunner {
         });
         async function processEvent(e) {
             if (!eventToScenario.has(e)) {
-                console.warn(`❌ Received non-existing event: '${e}'`);
+                console.warn(`[${project.name}] Received non-existing event: '${e}' ❌`);
                 return;
             }
             const screenshot = await page.screenshot({
                 omitBackground: false,
                 optimizeForSpeed: false,
             });
-            console.log(`Event '${e}' received`);
+            console.log(`[${project.name}] Event '${e}' received`);
             results[eventToScenario.get(e)] = screenshot;
             /* Needs to be set after taking the screenshot to avoid
              * closing the browser too fast. */
@@ -280,7 +309,6 @@ export class ScreenshotRunner {
                 window.testScreenshot(`wle-scene-ready:${e.detail.filename}`);
             });
         });
-        console.log(`📷 Capturing scenarios...`);
         let time = 0;
         while (state === WebRunnerState.Running && eventCount < count && time < timeout) {
             const debounceTime = 1000;
@@ -299,7 +327,7 @@ export class ScreenshotRunner {
                     const errorStr = error.stack
                         ? `Stacktrace:\n${error.stack}`
                         : error + '';
-                    throw `Uncaught browser top-level error: ${errorStr}`;
+                    console.error(`[${project.name}] Uncaught browser top-level error: ${errorStr}`);
                 }
                 /* When using the watch mode, stop on any top-level error. */
                 await page.waitForNavigation();
@@ -317,7 +345,6 @@ export class ScreenshotRunner {
      * @returns An array containing indices of failed comparison.
      */
     _compare(scenarios, screenshots, references) {
-        console.log(`\n✏️  Comparing scenarios...`);
         // @todo: Move into worker
         const failed = [];
         for (let i = 0; i < screenshots.length; ++i) {
@@ -360,7 +387,6 @@ export class ScreenshotRunner {
         if (!scenarios.length)
             return;
         const config = this._config;
-        console.log(`\n✏️  Saving scenario references...`);
         let output = null;
         if (config.output) {
             const folder = basename(project.path);
@@ -381,6 +407,6 @@ export class ScreenshotRunner {
                 .then(() => console.log(`Screenshot '${summary}' saved`))
                 .catch((e) => console.log(`❌ Failed to write png '${summary}'\n  ${e.reason}`)));
         }
-        return Promise.all(promises);
+        return Promise.all(promises).then(() => { });
     }
 }

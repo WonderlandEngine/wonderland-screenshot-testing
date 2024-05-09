@@ -1,6 +1,4 @@
-/// <reference types="node" resolution-mode="require"/>
-import { Browser } from 'puppeteer-core';
-import { Config, Project } from './config.js';
+import { Config } from './config.js';
 export interface Dimensions {
     width: number;
     height: number;
@@ -43,12 +41,14 @@ export declare enum LogLevel {
 export declare class ScreenshotRunner {
     /** Browser logs */
     logs: string[];
-    /** Configuration to run. @hidden */
+    /** Configuration to run. */
     private _config;
-    /** Base path to serve. @hidden */
-    private _currentBasePath;
-    /** Dispatch an info log coming from the browser. @hidden */
+    /** Browser context debounce time. */
+    private _contextDebounce;
+    /** Dispatch an info log coming from the browser. */
     private _onBrowserInfoLog;
+    /** HTTP server callback. */
+    private _httpCallback;
     /**
      * Create a new runner.
      *
@@ -69,14 +69,12 @@ export declare class ScreenshotRunner {
      */
     saveLogs(path: string): Promise<void>;
     /**
-     * Run the tests of a given project.
+     * Capture screenshots in a browser using one/multiple context(s).
      *
-     * @param project The project to run the scenarios from.
-     * @param browser Browser instance.
-     * @returns A promise that resolves to `true` if all tests passed,
-     *     `false` otherwise.
+     * @param browser The browser instance.
+     * @returns Array of screenshots **per** project.
      */
-    _runTests(project: Project, browser: Browser): Promise<boolean>;
+    private _capture;
     /**
      * Capture the screenshots for a project.
      *
@@ -85,7 +83,7 @@ export declare class ScreenshotRunner {
      * @returns An array of promise that resolve with the data for loaded images,
      *    or errors for failed images.
      */
-    _captureScreenshots(browser: Browser, project: Project, { width, height }: Dimensions): Promise<(Error | Buffer)[]>;
+    private _captureProjectScreenshots;
     /**
      * Compare screenshots against references.
      *
