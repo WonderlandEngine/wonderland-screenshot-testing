@@ -1,5 +1,5 @@
 import {IncomingMessage, ServerResponse, createServer} from 'node:http';
-import {parse as parseURL} from 'node:url';
+import {cpus} from 'node:os';
 import {readFile, writeFile} from 'node:fs/promises';
 import {resolve, join, basename, dirname} from 'node:path';
 
@@ -122,6 +122,9 @@ export class ScreenshotRunner {
     /** Configuration to run. */
     private _config: Config;
 
+    /** Browser context debounce time. */
+    private _contextDebounce = 750;
+
     /** Dispatch an info log coming from the browser. */
     private _onBrowserInfoLog = (message: ConsoleMessage) => {
         const msg = message.text();
@@ -192,7 +195,6 @@ export class ScreenshotRunner {
             args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
         });
 
-        console.log(`\n📷 Capturing scenarios for ${projects.length} project(s)...`);
         const screenshotsPending = this._capture(browser);
 
         /* While we could wait simultaneously for screenshots and references, loading the pngs
@@ -219,8 +221,9 @@ export class ScreenshotRunner {
         const success = failures.findIndex((a) => a.length) === -1;
 
         /* Save screenshots to disk based on the config saving mode */
+        const {save} = config;
         let toSave: Promise<void>[] = [];
-        if (config.save === SaveMode.OnFailure) {
+        if (save === SaveMode.OnFailure) {
             toSave = projects.map((project, i) => {
                 const failedScenarios = reduce(failures[i], project.scenarios);
                 const failedPngs = reduce(failures[i], pngs[i]);
@@ -230,10 +233,7 @@ export class ScreenshotRunner {
             toSave = projects.map((proj, i) => this._save(proj, proj.scenarios, pngs[i]));
         }
 
-        if (
-            config.save === SaveMode.All ||
-            (config.save === SaveMode.OnFailure && !success)
-        ) {
+        if (save === SaveMode.All || (save === SaveMode.OnFailure && !success)) {
             console.log(`\n✏️  Saving scenario references...`);
         }
         await Promise.all(toSave);
@@ -256,12 +256,23 @@ export class ScreenshotRunner {
         return writeFile(fullpath, content);
     }
 
+    /**
+     * Capture screenshots in a browser using one/multiple context(s).
+     *
+     * @param browser The browser instance.
+     * @returns Array of screenshots **per** project.
+     */
     private async _capture(browser: Browser) {
-        const projects = this._config.projects;
-        const maxContexts = Math.min(projects.length, this._config.maxContexts);
+        const {projects, maxContexts} = this._config;
+
+        const contextsUpperBound = maxContexts ?? Math.min(Math.max(2, cpus().length), 6);
+        const contextsCount = Math.min(projects.length, contextsUpperBound);
+
+        console.log(`\n📷 Capturing scenarios for ${projects.length} project(s)...`);
+        console.log(`  Using ${contextsCount} browser instances`);
 
         const contexts: (BrowserContext | null)[] = await Promise.all(
-            Array.from({length: maxContexts})
+            Array.from({length: contextsCount})
                 .fill(null)
                 .map((_) => browser.createIncognitoBrowserContext())
         );
@@ -271,12 +282,13 @@ export class ScreenshotRunner {
         for (let i = 0; i < projects.length; ++i) {
             let freeContext = -1;
             while ((freeContext = contexts.findIndex((x) => x !== null)) === -1) {
-                await new Promise((res) => setTimeout(res, 500));
+                /* Yield the event loop to allow checking for free contexts. */
+                await new Promise((res) => setTimeout(res, this._contextDebounce));
             }
 
             const context = contexts[freeContext]!;
             if (context === null) throw new Error('null context');
-            contexts[freeContext] = null;
+            contexts[freeContext] = null; /* Marks context as used */
 
             result[i] = this._captureProjectScreenshots(context, i, projects[i]).finally(
                 () => (contexts[freeContext] = context)
@@ -300,6 +312,8 @@ export class ScreenshotRunner {
         {width, height}: Dimensions
     ) {
         const config = this._config;
+
+        const project = config.projects[projectId];
         const {scenarios, timeout} = project;
         const count = scenarios.length;
         const results: (Buffer | Error)[] = new Array(count).fill(null);
@@ -325,6 +339,9 @@ export class ScreenshotRunner {
         page.on('error', onerror);
         page.on('console', this._onBrowserInfoLog);
         page.setCacheEnabled(false);
+        page.setExtraHTTPHeaders({
+            'test-project': projectId.toString(),
+        });
         await page.setViewport({
             width: width,
             height: height,

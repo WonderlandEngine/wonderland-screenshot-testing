@@ -122,6 +122,9 @@ export class Config {
     /** Browser logs setup. */
     log: LogLevel = LogLevel.Warn & LogLevel.Error;
 
+    /** Maximum number of browser contexts running simultaneously. */
+    maxContexts: number | null = null;
+
     async load(path: string) {
         /* Find all config files to run. */
         const isDirectory = (await stat(path)).isDirectory();
