@@ -92,7 +92,7 @@ Every project must have a configuration file:
 
     // Width of the screenshot capture. Must match the image reference width.
     "width": 480,
-    // Height of the screenshot capture. Must match the image reference width.
+    // Height of the screenshot capture. Must match the image reference height.
     "height": 270,
 
     "scenarios": [
