@@ -164,13 +164,13 @@ if (isPlayerShooting()) {
 
 ## Debugging
 
-You can start the runner in watch mode by specifying the event to watch:
+You can start the runner in watch mode:
 
 ```sh
-wle-screenshot-testing config.screenshot.json MyScene.bin
+wle-screenshot-testing config.screenshot.json -w
 ```
 
-In watch mode, the browser will automatically open and the tests will block when the event arrives.
+In watch mode, the browser will automatically open and kept alive even if tests are failing.
 
 ## CLI Arguments
 
@@ -179,5 +179,5 @@ In watch mode, the browser will automatically open and the tests will block when
 |**--save-on-failure**|_Flag_|Overwrites failed reference(s) with the test(s) screenshot|
 |**--save**|_Flag_|Save every screenshot|
 |**-o, --output**|_Path_|Output folder for saved screenshots. References overwritten by default|
-|**-w, --watch**|_String_|Event to watch, i.e., to freeze the runner on|
+|**-w, --watch**|_Flag_|Watch, i.e., open the browser for each project|
 |**--logs**|_Path_|Path to store the browser logs. If not provided, logs will be discarded|

@@ -10,7 +10,7 @@ import {logError, logErrorExit} from './utils.js';
 interface Arguments {
     /** Print help. */
     help?: boolean;
-    /** Watch a specific project. */
+    /** Open the runner in watch mode. */
     watch?: boolean;
     /** Output folder. */
     output?: string;
