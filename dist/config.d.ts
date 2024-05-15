@@ -68,8 +68,8 @@ export declare class Config {
     save: SaveMode;
     /** Web server port. */
     port: number;
-    /** Event to watch. If `null`, watching is disabled. */
-    watch: string | null;
+    /** If `true`, open browser and await for navigation. */
+    watch: boolean;
     /** Browser logs setup. */
     log: LogLevel;
     /** Maximum number of browser contexts running simultaneously. */

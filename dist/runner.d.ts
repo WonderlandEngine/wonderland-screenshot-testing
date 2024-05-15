@@ -39,14 +39,12 @@ export declare enum LogLevel {
  * ```
  */
 export declare class ScreenshotRunner {
-    /** Browser logs */
-    logs: string[];
+    /** Per-project browser logs */
+    logs: string[][];
     /** Configuration to run. */
     private _config;
     /** Browser context debounce time. */
     private _contextDebounce;
-    /** Dispatch an info log coming from the browser. */
-    private _onBrowserInfoLog;
     /** HTTP server callback. */
     private _httpCallback;
     /**
@@ -72,6 +70,7 @@ export declare class ScreenshotRunner {
      * Capture screenshots in a browser using one/multiple context(s).
      *
      * @param browser The browser instance.
+     * @param contextsCount Number of browser contexts to use.
      * @returns Array of screenshots **per** project.
      */
     private _capture;

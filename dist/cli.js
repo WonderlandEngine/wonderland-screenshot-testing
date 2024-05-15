@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { CONFIG_NAME, Config, RunnerMode, SaveMode, convertReadyEvent } from './config.js';
+import { CONFIG_NAME, Config, RunnerMode, SaveMode } from './config.js';
 import { ScreenshotRunner } from './runner.js';
 import { logError, logErrorExit } from './utils.js';
 /**
@@ -37,7 +37,7 @@ try {
     ({ values: args, positionals } = parseArgs({
         options: {
             help: { type: 'boolean', short: 'h' },
-            watch: { type: 'string', short: 'w' },
+            watch: { type: 'boolean', short: 'w' },
             output: { type: 'string', short: 'o' },
             save: { type: 'boolean', short: 's' },
             logs: { type: 'string' },
@@ -59,7 +59,7 @@ if (args.help) {
 }
 const maxContexts = args['max-contexts'] ? parseInt(args['max-contexts']) : null;
 const config = new Config();
-config.watch = args.watch ?? null;
+config.watch = args.watch ?? false;
 config.output = args.output ? resolve(args.output) : null;
 config.save = args['save-on-failure'] ? SaveMode.OnFailure : SaveMode.None;
 config.save = args.save ? SaveMode.All : config.save;
@@ -77,14 +77,6 @@ try {
 }
 catch (e) {
     logErrorExit('Configuration error(s) found:\n', e);
-}
-if (config.watch) {
-    const scenario = config.scenarioForEvent(config.watch) ??
-        config.scenarioForEvent(convertReadyEvent(config.watch));
-    if (!scenario) {
-        logErrorExit(`Could not find scenario to watch: '${config.watch}`);
-    }
-    config.watch = scenario.event;
 }
 const runner = new ScreenshotRunner(config);
 let exitCode = 0;

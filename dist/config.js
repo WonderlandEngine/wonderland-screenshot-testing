@@ -72,8 +72,8 @@ export class Config {
     save = SaveMode.None;
     /** Web server port. */
     port = 8080;
-    /** Event to watch. If `null`, watching is disabled. */
-    watch = null;
+    /** If `true`, open browser and await for navigation. */
+    watch = false;
     /** Browser logs setup. */
     log = LogLevel.Warn & LogLevel.Error;
     /** Maximum number of browser contexts running simultaneously. */
