@@ -40,6 +40,10 @@ export interface Project {
     path: string;
     name: string;
     timeout: number;
+    /** Screenshot width. Defaults to **480**. */
+    width: number;
+    /** Screenshot height. Defaults to **270**. */
+    height: number;
     scenarios: Scenario[];
 }
 /**
@@ -62,16 +66,14 @@ export declare class Config {
     mode: RunnerMode;
     /** Whether to save the screenshots or not.  */
     save: SaveMode;
-    /** Overriding screenshot width. */
-    width: number | null;
-    /** Overriding screenshot height. */
-    height: number | null;
     /** Web server port. */
     port: number;
     /** Event to watch. If `null`, watching is disabled. */
     watch: string | null;
     /** Browser logs setup. */
     log: LogLevel;
+    /** Maximum number of browser contexts running simultaneously. */
+    maxContexts: number | null;
     load(path: string): Promise<void>;
     /**
      * Append a configuration.

@@ -90,6 +90,11 @@ Every project must have a configuration file:
     // If this timeout is reached, the test suite will fail.
     "timeout": 60000,
 
+    // Width of the screenshot capture. Must match the image reference width.
+    "width": 480,
+    // Height of the screenshot capture. Must match the image reference height.
+    "height": 270,
+
     "scenarios": [
         {
             // Default loading event: Wait for `MyScene.bin` to load
@@ -176,5 +181,3 @@ In watch mode, the browser will automatically open and the tests will block when
 |**-o, --output**|_Path_|Output folder for saved screenshots. References overwritten by default|
 |**-w, --watch**|_String_|Event to watch, i.e., to freeze the runner on|
 |**--logs**|_Path_|Path to store the browser logs. If not provided, logs will be discarded|
-|**--width**|_Number_|Overriding screenshot width|
-|**--height**|_Number_|Overriding screenshot height|

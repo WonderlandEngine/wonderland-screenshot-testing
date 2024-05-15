@@ -50,6 +50,10 @@ export interface Project {
     path: string;
     name: string;
     timeout: number;
+    /** Screenshot width. Defaults to **480**. */
+    width: number;
+    /** Screenshot height. Defaults to **270**. */
+    height: number;
     scenarios: Scenario[];
 }
 
@@ -109,11 +113,6 @@ export class Config {
     /** Whether to save the screenshots or not.  */
     save: SaveMode = SaveMode.None;
 
-    /** Overriding screenshot width. */
-    width: number | null = null;
-    /** Overriding screenshot height. */
-    height: number | null = null;
-
     /** Web server port. */
     port: number = 8080;
 
@@ -122,6 +121,9 @@ export class Config {
 
     /** Browser logs setup. */
     log: LogLevel = LogLevel.Warn & LogLevel.Error;
+
+    /** Maximum number of browser contexts running simultaneously. */
+    maxContexts: number | null = null;
 
     async load(path: string) {
         /* Find all config files to run. */
@@ -155,6 +157,9 @@ export class Config {
             ? json.scenarios
             : [json.scenarios];
 
+        const width = json.width ?? 480;
+        const height = json.height ?? 270;
+
         const path = resolve(dirname(configPath));
         const name = basename(path);
         const scenarios = (jsonScenarios as ScenarioJson[]).map((s) => ({
@@ -164,7 +169,7 @@ export class Config {
             perPixelTolerance: s.perPixelTolerance ?? 0.1,
         }));
 
-        this.projects.push({timeout, path, name, scenarios});
+        this.projects.push({timeout, path, name, scenarios, width, height});
     }
 
     /**

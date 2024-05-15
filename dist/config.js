@@ -70,16 +70,14 @@ export class Config {
     mode = RunnerMode.CaptureAndCompare;
     /** Whether to save the screenshots or not.  */
     save = SaveMode.None;
-    /** Overriding screenshot width. */
-    width = null;
-    /** Overriding screenshot height. */
-    height = null;
     /** Web server port. */
     port = 8080;
     /** Event to watch. If `null`, watching is disabled. */
     watch = null;
     /** Browser logs setup. */
     log = LogLevel.Warn & LogLevel.Error;
+    /** Maximum number of browser contexts running simultaneously. */
+    maxContexts = null;
     async load(path) {
         /* Find all config files to run. */
         const isDirectory = (await stat(path)).isDirectory();
@@ -106,6 +104,8 @@ export class Config {
         const jsonScenarios = Array.isArray(json.scenarios)
             ? json.scenarios
             : [json.scenarios];
+        const width = json.width ?? 480;
+        const height = json.height ?? 270;
         const path = resolve(dirname(configPath));
         const name = basename(path);
         const scenarios = jsonScenarios.map((s) => ({
@@ -114,7 +114,7 @@ export class Config {
             tolerance: s.tolerance ?? 0.005,
             perPixelTolerance: s.perPixelTolerance ?? 0.1,
         }));
-        this.projects.push({ timeout, path, name, scenarios });
+        this.projects.push({ timeout, path, name, scenarios, width, height });
     }
     /**
      * Get the scenario associated to an event.
