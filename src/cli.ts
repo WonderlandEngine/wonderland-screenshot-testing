@@ -10,8 +10,8 @@ import {logError, logErrorExit} from './utils.js';
 interface Arguments {
     /** Print help. */
     help?: boolean;
-    /** Watch a specific event. */
-    watch?: string;
+    /** Watch a specific project. */
+    watch?: boolean;
     /** Output folder. */
     output?: string;
     /** Save all captured screenshots. */
@@ -72,7 +72,7 @@ try {
     ({values: args, positionals} = parseArgs({
         options: {
             help: {type: 'boolean', short: 'h'},
-            watch: {type: 'string', short: 'w'},
+            watch: {type: 'boolean', short: 'w'},
             output: {type: 'string', short: 'o'},
             save: {type: 'boolean', short: 's'},
             logs: {type: 'string'},
@@ -96,7 +96,7 @@ if (args.help) {
 const maxContexts = args['max-contexts'] ? parseInt(args['max-contexts']) : null;
 
 const config = new Config();
-config.watch = args.watch ?? null;
+config.watch = args.watch ?? false;
 config.output = args.output ? resolve(args.output) : null;
 config.save = args['save-on-failure'] ? SaveMode.OnFailure : SaveMode.None;
 config.save = args.save ? SaveMode.All : config.save;
@@ -114,16 +114,6 @@ try {
     await config.validate();
 } catch (e) {
     logErrorExit('Configuration error(s) found:\n', e);
-}
-
-if (config.watch) {
-    const scenario =
-        config.scenarioForEvent(config.watch) ??
-        config.scenarioForEvent(convertReadyEvent(config.watch));
-    if (!scenario) {
-        logErrorExit(`Could not find scenario to watch: '${config.watch}`);
-    }
-    config.watch = scenario.event;
 }
 
 const runner = new ScreenshotRunner(config);

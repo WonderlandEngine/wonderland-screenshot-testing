@@ -16,13 +16,6 @@ import pixelmatch from 'pixelmatch';
 import {Config, Scenario, Project, SaveMode, RunnerMode} from './config.js';
 import {mkdirp, summarizePath} from './utils.js';
 
-/** State the runner is currently in. */
-enum WebRunnerState {
-    Running = 1,
-    Watching = 2,
-    Error = 3,
-}
-
 /**
  * Parse the buffer as a png.
  *
@@ -116,23 +109,14 @@ const LogTypeToLevel = {
  * ```
  */
 export class ScreenshotRunner {
-    /** Browser logs */
-    logs: string[] = [];
+    /** Per-project browser logs */
+    logs: string[][] = [];
 
     /** Configuration to run. */
     private _config: Config;
 
     /** Browser context debounce time. */
     private _contextDebounce = 750;
-
-    /** Dispatch an info log coming from the browser. */
-    private _onBrowserInfoLog = (message: ConsoleMessage) => {
-        const msg = message.text();
-        const type = message.type() as 'log' | 'warn' | 'error';
-        const level = LogTypeToLevel[type as keyof typeof LogTypeToLevel];
-        this.logs.push(`[${message.type()}] ${msg}`);
-        if (this._config.log & level) console[type](`[browser] ${msg}`);
-    };
 
     /** HTTP server callback. */
     private _httpCallback = (
@@ -163,11 +147,11 @@ export class ScreenshotRunner {
      * @returns `true` if all tests passed, `false` otherwise.
      */
     async run(): Promise<boolean> {
-        this.logs.length = 0;
-
         const config = this._config;
         const projects = config.projects;
         if (config.output) await mkdirp(config.output);
+
+        this.logs = projects.map((_) => []);
 
         /* Start loading references for each project */
         const referencesPending: Promise<(Image2d | Error)[]>[] = Array.from(
@@ -179,8 +163,18 @@ export class ScreenshotRunner {
             referencesPending[i] = loadReferences(project.scenarios);
         }
 
-        /* Start capturing screenshots for each project */
-        console.log(`Starting test server on port: ${config.port}`);
+        const contextsUpperBound =
+            config.maxContexts ?? Math.min(Math.max(2, cpus().length), 6);
+        const contexts = Math.min(projects.length, contextsUpperBound);
+
+        console.log(
+            'Information:\n' +
+                `  ➡️  Web server port: ${config.port}\n` +
+                `  ➡️  Projects count: ${config.projects.length}\n` +
+                `  ➡️  Browser contexts: ${contexts}\n` +
+                `  ➡️  Watching: ${config.watch}`
+        );
+
         const server = createServer(this._httpCallback);
         server.listen(config.port);
 
@@ -195,7 +189,8 @@ export class ScreenshotRunner {
             args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
         });
 
-        const screenshotsPending = this._capture(browser);
+        /* Start capturing screenshots for each project */
+        const screenshotsPending = this._capture(browser, contexts);
 
         /* While we could wait simultaneously for screenshots and references, loading the pngs
          * should be must faster and be done by now anyway. */
@@ -252,7 +247,7 @@ export class ScreenshotRunner {
         const directory = resolve(dirname(fullpath));
         await mkdirp(directory);
 
-        const content = this.logs.join('\n');
+        const content = this.logs.map((l) => l.join('\n')).join('\n\n');
         return writeFile(fullpath, content);
     }
 
@@ -260,17 +255,13 @@ export class ScreenshotRunner {
      * Capture screenshots in a browser using one/multiple context(s).
      *
      * @param browser The browser instance.
+     * @param contextsCount Number of browser contexts to use.
      * @returns Array of screenshots **per** project.
      */
-    private async _capture(browser: Browser) {
-        const {projects, maxContexts} = this._config;
-
-        const contextsUpperBound = maxContexts ?? Math.min(Math.max(2, cpus().length), 6);
-        const contextsCount = Math.min(projects.length, contextsUpperBound);
+    private async _capture(browser: Browser, contextsCount: number) {
+        const {projects} = this._config;
 
         console.log(`\n📷 Capturing scenarios for ${projects.length} project(s)...`);
-        console.log(`  Using ${contextsCount} browser instances`);
-
         const contexts: (BrowserContext | null)[] = await Promise.all(
             Array.from({length: contextsCount})
                 .fill(null)
@@ -326,18 +317,22 @@ export class ScreenshotRunner {
         }
 
         let eventCount = 0;
-        let state = WebRunnerState.Running;
         let error: any = null;
 
         function onerror(err: any) {
             error = err;
-            state = WebRunnerState.Error;
         }
 
         const page = await browser.newPage();
         page.on('pageerror', onerror);
         page.on('error', onerror);
-        page.on('console', this._onBrowserInfoLog);
+        page.on('console', (message: ConsoleMessage) => {
+            const msg = message.text();
+            const type = message.type() as 'log' | 'warn' | 'error';
+            const level = LogTypeToLevel[type as keyof typeof LogTypeToLevel];
+            this.logs[projectId].push(`[${project.name}][${message.type()}] ${msg}`);
+            if (this._config.log & level) console[type](`[browser] ${msg}`);
+        });
         page.setCacheEnabled(false);
         page.setExtraHTTPHeaders({
             'test-project': projectId.toString(),
@@ -365,8 +360,6 @@ export class ScreenshotRunner {
             /* Needs to be set after taking the screenshot to avoid
              * closing the browser too fast. */
             ++eventCount;
-            /* Watching the scenario allows to debug it */
-            state = e === config.watch ? WebRunnerState.Watching : state;
         }
 
         await page.exposeFunction('testScreenshot', processEvent);
@@ -383,32 +376,22 @@ export class ScreenshotRunner {
             });
         });
 
+        if (config.watch) {
+            await page.waitForNavigation();
+        }
+
         let time = 0;
-        while (state === WebRunnerState.Running && eventCount < count && time < timeout) {
+        while (error === null && eventCount < count && time < timeout) {
             const debounceTime = 1000;
             await new Promise((res) => setTimeout(res, debounceTime));
             time += debounceTime;
         }
 
-        switch (state as WebRunnerState) {
-            case WebRunnerState.Watching:
-                console.log(`Watching scenario ${config.watch}...`);
-                await page.waitForNavigation();
-                break;
-            case WebRunnerState.Error:
-                /** @todo: Would be better to fail the test with the error,
-                 * and let the runner go to the next project. */
-                if (!config.watch) {
-                    const errorStr = error.stack
-                        ? `Stacktrace:\n${error.stack}`
-                        : error + '';
-                    console.error(
-                        `[${project.name}] Uncaught browser top-level error: ${errorStr}`
-                    );
-                }
-                /* When using the watch mode, stop on any top-level error. */
-                await page.waitForNavigation();
-                break;
+        if (error !== null) {
+            const errorStr = error.stack ? `Stacktrace:\n${error.stack}` : error + '';
+            console.error(
+                `[${project.name}] Uncaught browser top-level error: ${errorStr}`
+            );
         }
 
         await page.close();

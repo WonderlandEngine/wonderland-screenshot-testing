@@ -116,8 +116,8 @@ export class Config {
     /** Web server port. */
     port: number = 8080;
 
-    /** Event to watch. If `null`, watching is disabled. */
-    watch: string | null = null;
+    /** If `true`, open browser and await for navigation. */
+    watch: boolean = false;
 
     /** Browser logs setup. */
     log: LogLevel = LogLevel.Warn & LogLevel.Error;
