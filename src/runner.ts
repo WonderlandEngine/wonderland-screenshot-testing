@@ -1,7 +1,9 @@
 import {IncomingMessage, ServerResponse, createServer} from 'node:http';
 import {cpus} from 'node:os';
+import {createWriteStream} from 'node:fs';
 import {readFile, writeFile} from 'node:fs/promises';
 import {resolve, join, basename, dirname} from 'node:path';
+import {finished} from 'node:stream/promises';
 
 import {PNG} from 'pngjs';
 import {
@@ -14,6 +16,7 @@ import handler from 'serve-handler';
 import pixelmatch from 'pixelmatch';
 
 import {Config, Scenario, Project, SaveMode, RunnerMode} from './config.js';
+import {Dimensions, Image2d, generateImageDiff} from './image.js';
 import {mkdirp, summarizePath} from './utils.js';
 
 /**
@@ -24,6 +27,7 @@ import {mkdirp, summarizePath} from './utils.js';
  */
 function parsePNG(data: Buffer): Image2d {
     const png = PNG.sync.read(data);
+    console.log(png);
     return {
         width: png.width,
         height: png.height,
@@ -59,15 +63,6 @@ function reduce<T>(indices: number[], array: T[]) {
     }
     return result;
 }
-
-export interface Dimensions {
-    width: number;
-    height: number;
-}
-
-export type Image2d = Dimensions & {
-    data: Uint8ClampedArray;
-};
 
 /**
  * Test runner log level.
@@ -232,6 +227,56 @@ export class ScreenshotRunner {
             console.log(`\n✏️  Saving scenario references...`);
         }
         await Promise.all(toSave);
+
+        let diffImages: Promise<void>[] = [];
+        if (config.difference) {
+            /* Save image difference to disk */
+            diffImages = projects.map((project, i) => {
+                const failedScenarios = reduce(failures[i], project.scenarios);
+                const failedScreenshots = reduce(failures[i], screenshots[i]);
+                const failedReferences = reduce(failures[i], references[i]);
+
+                const baseOutput: string | null = config.output
+                    ? join(config.output, basename(project.path))
+                    : null;
+                const result = new Array(failedScenarios.length);
+
+                for (let i = 0; i < failedScenarios.length; ++i) {
+                    const image = generateImageDiff(
+                        failedScreenshots[i],
+                        failedReferences[i]
+                    );
+
+                    const baseFilename = basename(failedScenarios[i].reference).replace(
+                        '.png',
+                        ''
+                    );
+                    const folder = baseOutput ? baseOutput : dirname(baseFilename);
+                    const path = join(folder, `${baseFilename}_diff.png`);
+
+                    // const stream = createWriteStream(path);
+                    // const promise = finished(stream);
+                    const png = new PNG({
+                        filterType: -1,
+                        inputHasAlpha: false,
+                        bitDepth: 8,
+                        width: failedScreenshots[i].width,
+                        height: failedScreenshots[i].height,
+                    });
+                    png.data = Buffer.from(image.buffer);
+                    const data = PNG.sync.write(png.pack(), {
+                        colorType: 2,
+                    });
+                    // png.pack().pipe(stream);
+                    // result[i] = promise;
+                    result[i] = writeFile(path, data);
+                }
+
+                return Promise.all(result).then(() => {});
+            });
+        }
+
+        await Promise.all(diffImages);
 
         return success;
     }
@@ -431,6 +476,7 @@ export class ScreenshotRunner {
                 threshold: perPixelTolerance,
             });
             const error = count / (width * height);
+            console.log(`count = ${count}, % = ${error}, threshold = ${tolerance}`);
             if (error > tolerance) {
                 failed.push(i);
                 const val = (error * 100).toFixed(2);

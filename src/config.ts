@@ -113,6 +113,9 @@ export class Config {
     /** Whether to save the screenshots or not.  */
     save: SaveMode = SaveMode.None;
 
+    /** If `true`, save diff images. */
+    difference: boolean = false;
+
     /** Web server port. */
     port: number = 8080;
 

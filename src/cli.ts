@@ -20,6 +20,8 @@ interface Arguments {
     logs?: string;
     /** Runner mode. */
     mode?: string;
+    /** Save image diff. */
+    diff?: boolean;
     /** Maximum number of parralel browser instances. */
     'max-contexts'?: string;
     /** Save screenshots associated to failed tests. */
@@ -77,6 +79,7 @@ try {
             save: {type: 'boolean', short: 's'},
             logs: {type: 'string'},
             mode: {type: 'string', default: 'capture-and-compare'},
+            diff: {type: 'boolean', short: 'd'},
             'max-contexts': {type: 'string'},
             'save-on-failure': {type: 'boolean'},
         },
@@ -102,6 +105,7 @@ config.save = args['save-on-failure'] ? SaveMode.OnFailure : SaveMode.None;
 config.save = args.save ? SaveMode.All : config.save;
 config.mode =
     args.mode === 'capture-and-compare' ? RunnerMode.CaptureAndCompare : RunnerMode.Capture;
+config.difference = args.diff ?? false;
 config.maxContexts = maxContexts && !isNaN(maxContexts) ? maxContexts : null;
 
 try {
