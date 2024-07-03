@@ -43,6 +43,12 @@ export interface Scenario {
      * Should be in range [0; 1]. Defaults to `0.005`, i.e., 0.5% error.
      */
     tolerance: number;
+    /**
+     * Scenario index.
+     *
+     * @note This isn't configurable by the user, but rather used internally.
+     */
+    index: number;
 }
 
 /** Project test configuration. */
@@ -165,7 +171,8 @@ export class Config {
 
         const path = resolve(dirname(configPath));
         const name = basename(path);
-        const scenarios = (jsonScenarios as ScenarioJson[]).map((s) => ({
+        const scenarios = (jsonScenarios as ScenarioJson[]).map((s, index) => ({
+            index,
             event: s.event ?? s.readyEvent ? convertReadyEvent(s.readyEvent) : '',
             reference: resolve(path, s.reference),
             tolerance: s.tolerance ?? 0.005,

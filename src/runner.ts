@@ -2,7 +2,7 @@ import {IncomingMessage, ServerResponse, createServer} from 'node:http';
 import {cpus} from 'node:os';
 import {createWriteStream} from 'node:fs';
 import {readFile, writeFile} from 'node:fs/promises';
-import {resolve, join, basename, dirname} from 'node:path';
+import {resolve, join, basename, dirname, parse as parsePath} from 'node:path';
 import {finished} from 'node:stream/promises';
 
 import {PNG} from 'pngjs';
@@ -27,7 +27,6 @@ import {mkdirp, summarizePath} from './utils.js';
  */
 function parsePNG(data: Buffer): Image2d {
     const png = PNG.sync.read(data);
-    console.log(png);
     return {
         width: png.width,
         height: png.height,
@@ -54,14 +53,6 @@ async function loadReferences(scenarios: Scenario[]): Promise<(Image2d | Error)[
         }
     });
     return Promise.all(promises);
-}
-
-function reduce<T>(indices: number[], array: T[]) {
-    const result = new Array(indices.length).fill(null);
-    for (let i = 0; i < indices.length; ++i) {
-        result[i] = array[indices[i]];
-    }
-    return result;
 }
 
 /**
@@ -184,6 +175,20 @@ export class ScreenshotRunner {
             args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
         });
 
+        /* Create output folders for each project */
+        let outputsPending: Promise<string[] | null> | null = Promise.resolve(null);
+        if (config.output) {
+            const outputs = projects.map((p) => join(config.output!, basename(p.path)));
+            const promises = outputs.map(async (path) => {
+                await mkdirp(path).catch((e) => {
+                    const p = summarizePath(path);
+                    console.error(`❌ Failed to create output folder: '${p}', reason:`, e);
+                });
+                return path;
+            });
+            outputsPending = Promise.all(promises);
+        }
+
         /* Start capturing screenshots for each project */
         const screenshotsPending = this._capture(browser, contexts);
 
@@ -199,7 +204,7 @@ export class ScreenshotRunner {
         browser.close();
 
         /* Compare screenshots to references */
-        const failures: number[][] = Array.from(projects, () => []);
+        const failures: Scenario[][] = Array.from(projects, () => []);
         for (let i = 0; i < projects.length; ++i) {
             const {name, scenarios} = projects[i];
             const count = scenarios.length;
@@ -210,73 +215,46 @@ export class ScreenshotRunner {
         }
         const success = failures.findIndex((a) => a.length) === -1;
 
+        const outputs = await outputsPending;
+
         /* Save screenshots to disk based on the config saving mode */
-        const {save} = config;
-        let toSave: Promise<void>[] = [];
-        if (save === SaveMode.OnFailure) {
-            toSave = projects.map((project, i) => {
-                const failedScenarios = reduce(failures[i], project.scenarios);
-                const failedPngs = reduce(failures[i], pngs[i]);
-                return this._save(project, failedScenarios, failedPngs);
-            });
-        } else {
-            toSave = projects.map((proj, i) => this._save(proj, proj.scenarios, pngs[i]));
+        let willSaveOnDisk = config.difference;
+        let pendingSaves: Promise<void>[] = [];
+        switch (config.save) {
+            case SaveMode.OnFailure:
+                pendingSaves = projects.map((_, i) =>
+                    save(outputs ? outputs[i] : null, failures[i], pngs[i])
+                );
+                willSaveOnDisk = true;
+                break;
+            case SaveMode.All:
+                pendingSaves = projects.map((proj, i) =>
+                    save(outputs ? outputs[i] : null, proj.scenarios, pngs[i])
+                );
+                willSaveOnDisk = true;
+                break;
+            case SaveMode.None:
+                break;
         }
 
-        if (save === SaveMode.All || (save === SaveMode.OnFailure && !success)) {
-            console.log(`\n✏️  Saving scenario references...`);
+        if (willSaveOnDisk) {
+            console.log(`\n✏️  Saving scenario references & difference images...`);
         }
-        await Promise.all(toSave);
 
-        let diffImages: Promise<void>[] = [];
+        /* Save image difference to disk */
+        let pendingDiff: Promise<void>[] = [];
         if (config.difference) {
-            /* Save image difference to disk */
-            diffImages = projects.map((project, i) => {
-                const failedScenarios = reduce(failures[i], project.scenarios);
-                const failedScreenshots = reduce(failures[i], screenshots[i]);
-                const failedReferences = reduce(failures[i], references[i]);
-
-                const baseOutput: string | null = config.output
-                    ? join(config.output, basename(project.path))
-                    : null;
-                const result = new Array(failedScenarios.length);
-
-                for (let i = 0; i < failedScenarios.length; ++i) {
-                    const image = generateImageDiff(
-                        failedScreenshots[i],
-                        failedReferences[i]
-                    );
-
-                    const baseFilename = basename(failedScenarios[i].reference).replace(
-                        '.png',
-                        ''
-                    );
-                    const folder = baseOutput ? baseOutput : dirname(baseFilename);
-                    const path = join(folder, `${baseFilename}_diff.png`);
-
-                    // const stream = createWriteStream(path);
-                    // const promise = finished(stream);
-                    const png = new PNG({
-                        filterType: -1,
-                        inputHasAlpha: false,
-                        bitDepth: 8,
-                        width: failedScreenshots[i].width,
-                        height: failedScreenshots[i].height,
-                    });
-                    png.data = Buffer.from(image.buffer);
-                    const data = PNG.sync.write(png.pack(), {
-                        colorType: 2,
-                    });
-                    // png.pack().pipe(stream);
-                    // result[i] = promise;
-                    result[i] = writeFile(path, data);
-                }
-
-                return Promise.all(result).then(() => {});
+            pendingDiff = projects.map((_, i) => {
+                return saveDifferences(
+                    outputs ? outputs[i] : null,
+                    failures[i],
+                    screenshots[i],
+                    references[i]
+                );
             });
         }
 
-        await Promise.all(diffImages);
+        await Promise.all([Promise.all(pendingSaves), Promise.all(pendingDiff)]);
 
         return success;
     }
@@ -450,7 +428,7 @@ export class ScreenshotRunner {
      * @param scenarios The scenarios to compare.
      * @param screenshots The generated screenshots.
      * @param references Reference images (golden) of each scenario.
-     * @returns An array containing indices of failed comparison.
+     * @returns An array containing failed scenarios.
      */
     private _compare(
         scenarios: Scenario[],
@@ -458,14 +436,14 @@ export class ScreenshotRunner {
         references: (Error | Image2d)[]
     ) {
         // @todo: Move into worker
-        const failed: number[] = [];
+        const failed: Scenario[] = [];
         for (let i = 0; i < screenshots.length; ++i) {
             const {event, tolerance, perPixelTolerance} = scenarios[i];
 
             const screenshot = screenshots[i];
             const reference = references[i];
             if (screenshot instanceof Error || reference instanceof Error) {
-                failed.push(i);
+                failed.push(scenarios[i]);
                 const msg = (screenshot as Error).message ?? (reference as Error).message;
                 console.log(`❌ Scenario '${event}' failed with error:\n  ${msg}`);
                 continue;
@@ -476,9 +454,8 @@ export class ScreenshotRunner {
                 threshold: perPixelTolerance,
             });
             const error = count / (width * height);
-            console.log(`count = ${count}, % = ${error}, threshold = ${tolerance}`);
             if (error > tolerance) {
-                failed.push(i);
+                failed.push(scenarios[i]);
                 const val = (error * 100).toFixed(2);
                 const expected = (tolerance * 100).toFixed(2);
                 console.log(`❌ Scenario '${event}' failed!`);
@@ -491,47 +468,87 @@ export class ScreenshotRunner {
 
         return failed;
     }
+}
 
-    /**
-     * Save the captured references of a list of scenarios.
-     *
-     * @param config The configuration used to run the tests.
-     * @param project The project associated to the scenario to save.
-     * @param scenarios The list of scenarios to save.
-     * @param pngs The list of pngs (one per scenario).
-     * @returns A promise that resolves once all writes are done.
-     */
-    private async _save(project: Project, scenarios: Scenario[], pngs: (Buffer | Error)[]) {
-        if (!scenarios.length) return;
+/**
+ * Save the captured references of a list of scenarios.
+ *
+ * @note This method assumes that the output directory already exists.
+ *
+ * @param output The output directory. If `null`, will overwrite the reference file.
+ * @param scenarios The list of scenarios to save.
+ * @param pngs The entire list of pngs in the project.
+ * @returns A promise that resolves once all writes are done.
+ */
+function save(output: string | null, scenarios: Scenario[], pngs: (Buffer | Error)[]) {
+    if (!scenarios.length) return Promise.resolve();
 
-        const config = this._config;
+    const promises = scenarios.map((scenario) => {
+        const data = pngs[scenario.index];
+        if (data instanceof Error) return;
 
-        let output = null;
-        if (config.output) {
-            const folder = basename(project.path);
-            output = join(config.output, folder);
-            await mkdirp(output);
-        }
+        const path = output
+            ? join(output, basename(scenario.reference))
+            : scenario.reference;
 
-        const promises = [];
-        for (let i = 0; i < scenarios.length; ++i) {
-            const data = pngs[i];
-            if (data instanceof Error) continue;
-
-            const scenario = scenarios[i];
-            const path = output
-                ? join(output, basename(scenario.reference))
-                : scenario.reference;
-            const summary = summarizePath(path);
-            promises.push(
-                writeFile(path, data)
-                    .then(() => console.log(`Screenshot '${summary}' saved`))
-                    .catch((e) =>
-                        console.log(`❌ Failed to write png '${summary}'\n  ${e.reason}`)
-                    )
+        const summary = summarizePath(path);
+        return writeFile(path, data)
+            .then(() => console.log(`Screenshot '${summary}' saved`))
+            .catch((e) =>
+                console.error(`❌ Failed to write png '${summary}'\n  ${e.reason}`)
             );
-        }
+    });
 
-        return Promise.all(promises).then(() => {});
-    }
+    return Promise.all(promises).then(() => {});
+}
+
+/**
+ * Generate and save image difference.
+ *
+ * Diff images will output pink pixels where differences are found.
+ * Stronger differences will be represented as stronger tint of pink.
+ *
+ * @note This method assumes that the output directory already exists.
+ *
+ * @param output The output directory. If `null`, will output next to the reference file.
+ * @param scenarios The list of scenarios to generate the diff image for.
+ * @param screenshots The entire list of screenshots (raw image data) in the project.
+ * @param references The entire list of reference images (raw image data) in the project.
+ *
+ * @returns A promise that resolves once all images are saved.
+ */
+function saveDifferences(
+    output: string | null,
+    scenarios: Scenario[],
+    screenshots: (Error | Image2d)[],
+    references: (Error | Image2d)[]
+) {
+    const result = scenarios.map((scenario) => {
+        const screenshot = screenshots[scenario.index];
+        const reference = references[scenario.index];
+        if (screenshot instanceof Error || reference instanceof Error) return;
+
+        const image = generateImageDiff(screenshot, reference);
+
+        const {name, dir} = parsePath(basename(scenario.reference));
+        const path = join(output ? output : dir, `${name}_diff.png`);
+        const summary = summarizePath(path);
+
+        const stream = createWriteStream(path);
+        const promise = finished(stream)
+            .then(() => console.log(`Difference image '${summary}' saved`))
+            .catch((e) => {
+                console.error(
+                    `❌ Failed to write difference png '${summary}'\n  ${e.reason}`
+                );
+            });
+
+        const png = new PNG({width: screenshot.width, height: screenshot.height});
+        png.data = Buffer.from(image.buffer);
+        png.pack().pipe(stream);
+
+        return promise;
+    });
+
+    return Promise.all(result).then(() => {});
 }
