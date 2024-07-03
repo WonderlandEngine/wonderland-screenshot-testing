@@ -34,6 +34,12 @@ export interface Scenario {
      * Should be in range [0; 1]. Defaults to `0.005`, i.e., 0.5% error.
      */
     tolerance: number;
+    /**
+     * Scenario index.
+     *
+     * @note This isn't configurable by the user, but rather used internally.
+     */
+    index: number;
 }
 /** Project test configuration. */
 export interface Project {
@@ -66,6 +72,8 @@ export declare class Config {
     mode: RunnerMode;
     /** Whether to save the screenshots or not.  */
     save: SaveMode;
+    /** If `true`, save diff images. */
+    difference: boolean;
     /** Web server port. */
     port: number;
     /** If `true`, open browser and await for navigation. */
