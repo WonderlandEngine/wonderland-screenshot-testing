@@ -3,7 +3,7 @@
 import {resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 
-import {CONFIG_NAME, Config, RunnerMode, SaveMode, convertReadyEvent} from './config.js';
+import {CONFIG_NAME, Config, RunnerMode, SaveMode} from './config.js';
 import {ScreenshotRunner} from './runner.js';
 import {logError, logErrorExit} from './utils.js';
 

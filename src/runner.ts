@@ -1,6 +1,6 @@
 import {IncomingMessage, ServerResponse, createServer} from 'node:http';
 import {cpus} from 'node:os';
-import {createWriteStream, mkdir} from 'node:fs';
+import {createWriteStream} from 'node:fs';
 import {readFile, writeFile} from 'node:fs/promises';
 import {resolve, join, basename, dirname, parse as parsePath} from 'node:path';
 import {finished} from 'node:stream/promises';
@@ -436,7 +436,6 @@ export class ScreenshotRunner {
     ) {
         // @todo: Move into worker
         const failed: Scenario[] = [];
-        const success: Scenario[] = [];
         const differences: (Image2d | null)[] = [];
         for (let i = 0; i < screenshots.length; ++i) {
             const {event, tolerance, perPixelTolerance} = scenarios[i];
@@ -534,7 +533,7 @@ function saveDifferences(
         const difference = differences[scenario.index];
         if (!difference) return;
 
-        const {name, dir} = parsePath(basename(scenario.reference));
+        const {name, dir} = parsePath(scenario.reference);
         const path = join(output ? output : dir, `${name}_diff.png`);
         const summary = summarizePath(path);
 

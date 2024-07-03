@@ -13,9 +13,11 @@ export var SaveMode;
     /** Screenshots will not be saved. */
     SaveMode[SaveMode["None"] = 0] = "None";
     /** Screenshots will be saved only when a tests fail. */
-    SaveMode[SaveMode["OnFailure"] = 1] = "OnFailure";
-    /** Screenshots will be always be saved. */
-    SaveMode[SaveMode["All"] = 2] = "All";
+    SaveMode[SaveMode["Failure"] = 1] = "Failure";
+    /** All screenshots will be saved. */
+    SaveMode[SaveMode["SuccessAndFailures"] = 2] = "SuccessAndFailures";
+    /** Save image differences. */
+    SaveMode[SaveMode["Difference"] = 4] = "Difference";
 })(SaveMode || (SaveMode = {}));
 /** Test runner mode. */
 export var RunnerMode;
@@ -68,10 +70,8 @@ export class Config {
     output = null;
     /** Test runner mode. */
     mode = RunnerMode.CaptureAndCompare;
-    /** Whether to save the screenshots or not.  */
+    /** Bitset to manage screenshots to save. */
     save = SaveMode.None;
-    /** If `true`, save diff images. */
-    difference = false;
     /** Web server port. */
     port = 8080;
     /** If `true`, open browser and await for navigation. */

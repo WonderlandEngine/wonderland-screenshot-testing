@@ -9,9 +9,11 @@ export declare enum SaveMode {
     /** Screenshots will not be saved. */
     None = 0,
     /** Screenshots will be saved only when a tests fail. */
-    OnFailure = 1,
-    /** Screenshots will be always be saved. */
-    All = 2
+    Failure = 1,
+    /** All screenshots will be saved. */
+    SuccessAndFailures = 2,
+    /** Save image differences. */
+    Difference = 4
 }
 /** Test runner mode. */
 export declare enum RunnerMode {
@@ -70,10 +72,8 @@ export declare class Config {
     output: string | null;
     /** Test runner mode. */
     mode: RunnerMode;
-    /** Whether to save the screenshots or not.  */
-    save: SaveMode;
-    /** If `true`, save diff images. */
-    difference: boolean;
+    /** Bitset to manage screenshots to save. */
+    save: number;
     /** Web server port. */
     port: number;
     /** If `true`, open browser and await for navigation. */

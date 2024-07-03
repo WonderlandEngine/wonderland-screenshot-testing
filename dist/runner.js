@@ -114,8 +114,14 @@ export class ScreenshotRunner {
     async run() {
         const config = this._config;
         const projects = config.projects;
-        if (config.output)
+        /* Per-project output. `null` if the config overwrites file in the input tree. */
+        const outputs = new Array(projects.length).fill(null);
+        if (config.output) {
+            for (let i = 0; i < projects.length; ++i) {
+                outputs[i] = join(config.output, basename(projects[i].path));
+            }
             await mkdirp(config.output);
+        }
         this.logs = projects.map((_) => []);
         /* Start loading references for each project */
         const referencesPending = Array.from(config.projects, () => null);
@@ -160,55 +166,46 @@ export class ScreenshotRunner {
             console.log(`\n❔ Comparing ${count} scenarios in project '${name}'...`);
             if (config.mode !== RunnerMode.CaptureAndCompare)
                 continue;
-            const result = this._compare(scenarios, screenshots[i], references[i], config.difference);
+            const result = this._compare(scenarios, screenshots[i], references[i], !!(config.save & SaveMode.Difference));
             failures[i] = result.failed;
             differences[i] = result.differences;
         }
         const success = failures.findIndex((a) => a.length) === -1;
-        const saveOnFailure = config.difference || config.save === SaveMode.OnFailure;
         /* Create output folders for each project */
-        let outputsPending = Promise.resolve(null);
-        if (config.output) {
-            const outputs = projects.map((p) => join(config.output, basename(p.path)));
-            const promises = outputs.map(async (path, i) => {
-                /* For projects that don't require a save, skip the mkdir to avoid
-                 * creating empty folders. */
-                if (config.save === SaveMode.None)
-                    return path;
-                if (!failures[i].length && saveOnFailure)
-                    return path;
-                await mkdirp(path).catch((e) => {
-                    const p = summarizePath(path);
-                    console.error(`❌ Failed to create output folder: '${p}', reason:`, e);
-                });
-                return path;
+        const mkdirPending = outputs.map((path, i) => {
+            if (!config.save || !path)
+                return;
+            /* For projects that don't require a save, skip the mkdir to avoid
+             * creating empty folders. */
+            if (!failures[i].length && !(config.save & SaveMode.SuccessAndFailures)) {
+                return;
+            }
+            return mkdirp(path).catch((e) => {
+                const p = summarizePath(path);
+                console.error(`❌ Failed to create output folder: '${p}', reason:`, e);
             });
-            outputsPending = Promise.all(promises);
-        }
-        const outputs = await outputsPending;
+        });
+        await Promise.all(mkdirPending);
         /* Save screenshots to disk based on the config saving mode */
-        let pendingSaves = [];
-        switch (config.save) {
-            case SaveMode.OnFailure:
-                pendingSaves = projects.map((_, i) => save(outputs ? outputs[i] : null, failures[i], pngs[i]));
-                break;
-            case SaveMode.All:
-                pendingSaves = projects.map((proj, i) => save(outputs ? outputs[i] : null, proj.scenarios, pngs[i]));
-                break;
-            case SaveMode.None:
-                break;
+        const pendingSaves = [];
+        if (config.save & SaveMode.SuccessAndFailures) {
+            const saves = projects.map((proj, i) => save(outputs[i], proj.scenarios, pngs[i]));
+            pendingSaves.push(...saves);
         }
-        if (config.save === SaveMode.All || (!success && saveOnFailure)) {
+        else if (config.save & SaveMode.Failure) {
+            const saves = projects.map((_, i) => save(outputs[i], failures[i], pngs[i]));
+            pendingSaves.push(...saves);
+        }
+        if (config.save & SaveMode.Difference) {
+            const saves = projects.map((_, i) => {
+                return saveDifferences(outputs[i], failures[i], differences[i]);
+            });
+            pendingSaves.push(...saves);
+        }
+        if (pendingSaves.length) {
             console.log(`\n✏️  Saving scenario references & difference images...`);
         }
-        /* Save image difference to disk */
-        let pendingDiff = [];
-        if (config.difference) {
-            pendingDiff = projects.map((_, i) => {
-                return saveDifferences(outputs ? outputs[i] : null, failures[i], differences[i]);
-            });
-        }
-        await Promise.all([Promise.all(pendingSaves), Promise.all(pendingDiff)]);
+        await Promise.all(pendingSaves);
         return success;
     }
     /**
@@ -435,7 +432,7 @@ function saveDifferences(output, scenarios, differences) {
         const difference = differences[scenario.index];
         if (!difference)
             return;
-        const { name, dir } = parsePath(basename(scenario.reference));
+        const { name, dir } = parsePath(scenario.reference);
         const path = join(output ? output : dir, `${name}_diff.png`);
         const summary = summarizePath(path);
         const stream = createWriteStream(path);
