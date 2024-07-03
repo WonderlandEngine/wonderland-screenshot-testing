@@ -59,7 +59,8 @@ function printHelp(summary = false) {
         '\t-h, --help:\tPrints help\n' +
             '\t-w, --watch:\tStart the runner in watch mode for debugging\n' +
             '\t--save:\tSave all test screenshots' +
-            '\t--save-on-failure:\tOverwrites failed references with the test screenshot'
+            '\t--save-on-failure:\tOverwrites failed references with the test screenshot' +
+            '\t--diff:\tSave image difference for failed tests'
     );
 }
 
