@@ -5,6 +5,7 @@ export interface Dimensions {
     /** Dimension height */
     height: number;
 }
+
 /** Basic 2d image type */
 export type Image2d = Dimensions & {
     /** Pixel data */

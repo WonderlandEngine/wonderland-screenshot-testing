@@ -1,11 +1,4 @@
 import { Config } from './config.js';
-export interface Dimensions {
-    width: number;
-    height: number;
-}
-export type Image2d = Dimensions & {
-    data: Uint8ClampedArray;
-};
 /**
  * Test runner log level.
  */
@@ -89,17 +82,7 @@ export declare class ScreenshotRunner {
      * @param scenarios The scenarios to compare.
      * @param screenshots The generated screenshots.
      * @param references Reference images (golden) of each scenario.
-     * @returns An array containing indices of failed comparison.
+     * @returns An array containing failed scenarios.
      */
     private _compare;
-    /**
-     * Save the captured references of a list of scenarios.
-     *
-     * @param config The configuration used to run the tests.
-     * @param project The project associated to the scenario to save.
-     * @param scenarios The list of scenarios to save.
-     * @param pngs The list of pngs (one per scenario).
-     * @returns A promise that resolves once all writes are done.
-     */
-    private _save;
 }

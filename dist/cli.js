@@ -26,7 +26,8 @@ function printHelp(summary = false) {
     console.log('\t-h, --help:\tPrints help\n' +
         '\t-w, --watch:\tStart the runner in watch mode for debugging\n' +
         '\t--save:\tSave all test screenshots' +
-        '\t--save-on-failure:\tOverwrites failed references with the test screenshot');
+        '\t--save-on-failure:\tOverwrites failed references with the test screenshot' +
+        '\t--diff:\tSave image difference for failed tests');
 }
 /**
  * Main
@@ -42,6 +43,7 @@ try {
             save: { type: 'boolean', short: 's' },
             logs: { type: 'string' },
             mode: { type: 'string', default: 'capture-and-compare' },
+            diff: { type: 'boolean', short: 'd' },
             'max-contexts': { type: 'string' },
             'save-on-failure': { type: 'boolean' },
         },
@@ -65,6 +67,7 @@ config.save = args['save-on-failure'] ? SaveMode.OnFailure : SaveMode.None;
 config.save = args.save ? SaveMode.All : config.save;
 config.mode =
     args.mode === 'capture-and-compare' ? RunnerMode.CaptureAndCompare : RunnerMode.Capture;
+config.difference = args.diff ?? false;
 config.maxContexts = maxContexts && !isNaN(maxContexts) ? maxContexts : null;
 try {
     await config.load(positionals[0] ?? CONFIG_NAME);
