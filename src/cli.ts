@@ -20,12 +20,12 @@ interface Arguments {
     logs?: string;
     /** Runner mode. */
     mode?: string;
-    /** Save image diff. */
-    diff?: boolean;
     /** Maximum number of parralel browser instances. */
     'max-contexts'?: string;
     /** Save screenshots associated to failed tests. */
     'save-on-failure'?: boolean;
+    /** Save image diff. */
+    'save-difference'?: boolean;
 }
 
 /**
@@ -60,7 +60,7 @@ function printHelp(summary = false) {
             '\t-w, --watch:\tStart the runner in watch mode for debugging\n' +
             '\t--save:\tSave all test screenshots' +
             '\t--save-on-failure:\tOverwrites failed references with the test screenshot' +
-            '\t--diff:\tSave image difference for failed tests'
+            '\t--save-difference:\tSave image difference for failed tests'
     );
 }
 
@@ -80,9 +80,9 @@ try {
             save: {type: 'boolean', short: 's'},
             logs: {type: 'string'},
             mode: {type: 'string', default: 'capture-and-compare'},
-            diff: {type: 'boolean', short: 'd'},
             'max-contexts': {type: 'string'},
             'save-on-failure': {type: 'boolean'},
+            'save-difference': {type: 'boolean'},
         },
         allowPositionals: true,
     }));
@@ -102,12 +102,12 @@ const maxContexts = args['max-contexts'] ? parseInt(args['max-contexts']) : null
 const config = new Config();
 config.watch = args.watch ?? false;
 config.output = args.output ? resolve(args.output) : null;
-config.save = args['save-on-failure'] ? SaveMode.OnFailure : SaveMode.None;
-config.save = args.save ? SaveMode.All : config.save;
 config.mode =
     args.mode === 'capture-and-compare' ? RunnerMode.CaptureAndCompare : RunnerMode.Capture;
-config.difference = args.diff ?? false;
 config.maxContexts = maxContexts && !isNaN(maxContexts) ? maxContexts : null;
+config.save |= args.save ? SaveMode.SuccessAndFailures : SaveMode.None;
+config.save |= args['save-on-failure'] ? SaveMode.Failure : SaveMode.None;
+config.save |= args['save-difference'] ? SaveMode.Difference : SaveMode.None;
 
 try {
     await config.load(positionals[0] ?? CONFIG_NAME);

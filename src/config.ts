@@ -16,9 +16,11 @@ export enum SaveMode {
     /** Screenshots will not be saved. */
     None = 0,
     /** Screenshots will be saved only when a tests fail. */
-    OnFailure = 1,
-    /** Screenshots will be always be saved. */
-    All = 2,
+    Failure = 1 << 0,
+    /** All screenshots will be saved. */
+    SuccessAndFailures = 1 << 1,
+    /** Save image differences. */
+    Difference = 1 << 2,
 }
 
 /** Test runner mode. */
@@ -116,11 +118,8 @@ export class Config {
     /** Test runner mode. */
     mode: RunnerMode = RunnerMode.CaptureAndCompare;
 
-    /** Whether to save the screenshots or not.  */
-    save: SaveMode = SaveMode.None;
-
-    /** If `true`, save diff images. */
-    difference: boolean = false;
+    /** Bitset to manage screenshots to save. */
+    save: number = SaveMode.None;
 
     /** Web server port. */
     port: number = 8080;
