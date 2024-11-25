@@ -172,7 +172,7 @@ export class Config {
         const name = basename(path);
         const scenarios = (jsonScenarios as ScenarioJson[]).map((s, index) => ({
             index,
-            event: s.event ?? s.readyEvent ? convertReadyEvent(s.readyEvent) : '',
+            event: s.event ?? (s.readyEvent ? convertReadyEvent(s.readyEvent) : ''),
             reference: resolve(path, s.reference),
             tolerance: s.tolerance ?? 0.005,
             perPixelTolerance: s.perPixelTolerance ?? 0.1,
