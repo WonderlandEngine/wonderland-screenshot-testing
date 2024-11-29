@@ -23,7 +23,7 @@
     "@types/serve-handler": "^6.1.2",
     "pixelmatch": "^5.3.0",
     "pngjs": "^7.0.0",
-    "puppeteer-core": "^21.3.8",
+    "puppeteer-core": "^23.9.0",
     "serve-handler": "^6.1.5"
   },
   "devDependencies": {
