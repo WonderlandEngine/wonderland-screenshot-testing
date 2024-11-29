@@ -138,6 +138,11 @@ export class ScreenshotRunner {
             `  ➡️  Watching: ${config.watch}`);
         const server = createServer(this._httpCallback);
         server.listen(config.port);
+        const args = ['--no-sandbox', '--ignore-gpu-blocklist'];
+        if (process.platform === 'linux') {
+            args.push('--enable-features=Vulkan', '--enable-skia-graphite', '--enable-unsafe-webgpu');
+        }
+        console.log('Launch browser with args:', args);
         const headless = !config.watch;
         const browser = await puppeteerLauncher({
             headless,
@@ -146,8 +151,10 @@ export class ScreenshotRunner {
             devtools: !headless,
             timeout: !config.watch ? 30000 : 0,
             waitForInitialPage: true,
-            args: ['--no-sandbox', '--use-gl=angle', '--ignore-gpu-blocklist'],
+            args,
         });
+        const version = await browser.version();
+        console.log('Browser version:', version);
         /* Start capturing screenshots for each project */
         const screenshotsPending = this._capture(browser, contexts);
         /* While we could wait simultaneously for screenshots and references, loading the pngs
