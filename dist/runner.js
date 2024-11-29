@@ -17,7 +17,7 @@ import { mkdirp, summarizePath } from './utils.js';
  * @returns The uncompressed image data.
  */
 function parsePNG(data) {
-    const png = PNG.sync.read(data);
+    const png = PNG.sync.read(Buffer.from(data));
     return {
         width: png.width,
         height: png.height,
@@ -239,7 +239,7 @@ export class ScreenshotRunner {
         console.log(`\n📷 Capturing scenarios for ${projects.length} project(s)...`);
         const contexts = await Promise.all(Array.from({ length: contextsCount })
             .fill(null)
-            .map((_) => browser.createIncognitoBrowserContext()));
+            .map((_) => browser.createBrowserContext()));
         const result = Array.from(projects, () => null);
         for (let i = 0; i < projects.length; ++i) {
             let freeContext = -1;

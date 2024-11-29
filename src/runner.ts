@@ -25,8 +25,8 @@ import {mkdirp, summarizePath} from './utils.js';
  * @param data The buffer to parse.
  * @returns The uncompressed image data.
  */
-function parsePNG(data: Buffer): Image2d {
-    const png = PNG.sync.read(data);
+function parsePNG(data: Uint8Array): Image2d {
+    const png = PNG.sync.read(Buffer.from(data));
     return {
         width: png.width,
         height: png.height,
@@ -299,10 +299,9 @@ export class ScreenshotRunner {
         const contexts: (BrowserContext | null)[] = await Promise.all(
             Array.from({length: contextsCount})
                 .fill(null)
-                .map((_) => browser.createIncognitoBrowserContext())
+                .map((_) => browser.createBrowserContext())
         );
-
-        const result: Promise<(Buffer | Error)[]>[] = Array.from(projects, () => null!);
+        const result: Promise<(Uint8Array | Error)[]>[] = Array.from(projects, () => null!);
 
         for (let i = 0; i < projects.length; ++i) {
             let freeContext = -1;
@@ -341,7 +340,7 @@ export class ScreenshotRunner {
         const project = config.projects[projectId];
         const {scenarios, timeout} = project;
         const count = scenarios.length;
-        const results: (Buffer | Error)[] = new Array(count).fill(null);
+        const results: (Uint8Array | Error)[] = new Array(count).fill(null);
 
         const eventToScenario = new Map();
         for (let i = 0; i < count; ++i) {
@@ -500,7 +499,7 @@ export class ScreenshotRunner {
  * @param pngs The entire list of pngs in the project.
  * @returns A promise that resolves once all writes are done.
  */
-function save(output: string | null, scenarios: Scenario[], pngs: (Buffer | Error)[]) {
+function save(output: string | null, scenarios: Scenario[], pngs: (Uint8Array | Error)[]) {
     if (!scenarios.length) return Promise.resolve();
 
     const promises = scenarios.map((scenario) => {
