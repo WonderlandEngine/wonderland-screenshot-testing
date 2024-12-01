@@ -299,7 +299,7 @@ export class ScreenshotRunner {
         const contexts: (BrowserContext | null)[] = await Promise.all(
             Array.from({length: contextsCount})
                 .fill(null)
-                .map((_) => browser.createBrowserContext())
+                .map((_, i) => i == 0 ? browser.defaultBrowserContext() : browser.createBrowserContext())
         );
         const result: Promise<(Uint8Array | Error)[]>[] = Array.from(projects, () => null!);
 
@@ -356,7 +356,8 @@ export class ScreenshotRunner {
             error = err;
         }
 
-        const page = await browser.newPage();
+        const pages = await browser.pages();
+        const page = pages.length > 0 ? pages[0] : await browser.newPage();
         page.on('pageerror', onerror);
         page.on('error', onerror);
         page.on('console', (message: ConsoleMessage) => {
