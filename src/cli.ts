@@ -10,6 +10,8 @@ import {logError, logErrorExit} from './utils.js';
 interface Arguments {
     /** Print help. */
     help?: boolean;
+    /** Open the runner in headless mode. */
+    headless?: boolean;
     /** Open the runner in watch mode. */
     watch?: boolean;
     /** Output folder. */
@@ -58,6 +60,7 @@ function printHelp(summary = false) {
     console.log(
         '\t-h, --help:\tPrints help\n' +
             '\t-w, --watch:\tStart the runner in watch mode for debugging\n' +
+            '\t-H, --headless:\tStart the runner in headless mode\n' +
             '\t--save:\tSave all test screenshots' +
             '\t--save-on-failure:\tOverwrites failed references with the test screenshot' +
             '\t--save-difference:\tSave image difference for failed tests'
@@ -75,6 +78,7 @@ try {
     ({values: args, positionals} = parseArgs({
         options: {
             help: {type: 'boolean', short: 'h'},
+            headless: {type: 'boolean', short: 'H'},
             watch: {type: 'boolean', short: 'w'},
             output: {type: 'string', short: 'o'},
             save: {type: 'boolean', short: 's'},
@@ -101,6 +105,7 @@ const maxContexts = args['max-contexts'] ? parseInt(args['max-contexts']) : null
 
 const config = new Config();
 config.watch = args.watch ?? false;
+config.headless = args.headless ?? false;
 config.output = args.output ? resolve(args.output) : null;
 config.mode =
     args.mode === 'capture-and-compare' ? RunnerMode.CaptureAndCompare : RunnerMode.Capture;

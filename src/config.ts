@@ -124,6 +124,9 @@ export class Config {
     /** Web server port. */
     port: number = 8080;
 
+    /** If `true`, open browser in headless mode. */
+    headless: boolean = false;
+
     /** If `true`, open browser and await for navigation. */
     watch: boolean = false;
 
