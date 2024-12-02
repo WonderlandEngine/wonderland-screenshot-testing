@@ -25,8 +25,8 @@ import {mkdirp, summarizePath} from './utils.js';
  * @param data The buffer to parse.
  * @returns The uncompressed image data.
  */
-function parsePNG(data: Buffer): Image2d {
-    const png = PNG.sync.read(data);
+function parsePNG(data: Uint8Array): Image2d {
+    const png = PNG.sync.read(Buffer.from(data));
     return {
         width: png.width,
         height: png.height,
@@ -70,7 +70,7 @@ export enum LogLevel {
 const LogTypeToLevel = {
     log: LogLevel.Info,
     warn: LogLevel.Warn,
-    Error: LogLevel.Error,
+    error: LogLevel.Error,
 };
 
 /**
@@ -299,10 +299,9 @@ export class ScreenshotRunner {
         const contexts: (BrowserContext | null)[] = await Promise.all(
             Array.from({length: contextsCount})
                 .fill(null)
-                .map((_) => browser.createIncognitoBrowserContext())
+                .map((_) => browser.createBrowserContext())
         );
-
-        const result: Promise<(Buffer | Error)[]>[] = Array.from(projects, () => null!);
+        const result: Promise<(Uint8Array | Error)[]>[] = Array.from(projects, () => null!);
 
         for (let i = 0; i < projects.length; ++i) {
             let freeContext = -1;
@@ -341,7 +340,7 @@ export class ScreenshotRunner {
         const project = config.projects[projectId];
         const {scenarios, timeout} = project;
         const count = scenarios.length;
-        const results: (Buffer | Error)[] = new Array(count).fill(null);
+        const results: (Uint8Array | Error)[] = new Array(count).fill(null);
 
         const eventToScenario = new Map();
         for (let i = 0; i < count; ++i) {
@@ -351,21 +350,41 @@ export class ScreenshotRunner {
         }
 
         let eventCount = 0;
-        let error: any = null;
+        let errors: any[] = [];
 
-        function onerror(err: any) {
-            error = err;
-        }
+        const log = (type: 'log' | 'warn' | 'error', text: string) => {
+            const level = LogTypeToLevel[type as keyof typeof LogTypeToLevel];
+            this.logs[projectId].push(`[${project.name}][${type}] ${text}`);
+            if (this._config.log & level) console[type](`[browser][${type}] ${text}`);
+        };
+
+        const onerror = (error: any) => {
+            if (this._config.log & LogLevel.Error) {
+                const errorStr = error.stack ? `Stacktrace:\n${error.stack}` : error + '';
+                console.error(`[browser][${project.name}][error]: ${errorStr}`);
+            }
+            errors.push(error);
+        };
 
         const page = await browser.newPage();
         page.on('pageerror', onerror);
         page.on('error', onerror);
         page.on('console', (message: ConsoleMessage) => {
-            const msg = message.text();
-            const type = message.type() as 'log' | 'warn' | 'error';
-            const level = LogTypeToLevel[type as keyof typeof LogTypeToLevel];
-            this.logs[projectId].push(`[${project.name}][${message.type()}] ${msg}`);
-            if (this._config.log & level) console[type](`[browser] ${msg}`);
+            if (
+                message.type() !== 'log' &&
+                message.type() !== 'warn' &&
+                message.type() !== 'error'
+            )
+                return;
+            log(message.type() as 'log' | 'warn' | 'error', message.text());
+            if (message.type() === 'error') {
+                if (message.args()) {
+                    for (const error of message.args()) {
+                        onerror(error.toString());
+                    }
+                }
+                onerror(message.text());
+            }
         });
         page.setCacheEnabled(false);
         page.setExtraHTTPHeaders({
@@ -415,13 +434,13 @@ export class ScreenshotRunner {
         }
 
         let time = 0;
-        while (error === null && eventCount < count && time < timeout) {
+        while (eventCount < count && time < timeout) {
             const debounceTime = 1000;
             await new Promise((res) => setTimeout(res, debounceTime));
             time += debounceTime;
         }
 
-        if (error !== null) {
+        for (const error of errors) {
             const errorStr = error.stack ? `Stacktrace:\n${error.stack}` : error + '';
             console.error(
                 `[${project.name}] Uncaught browser top-level error: ${errorStr}`
@@ -500,7 +519,7 @@ export class ScreenshotRunner {
  * @param pngs The entire list of pngs in the project.
  * @returns A promise that resolves once all writes are done.
  */
-function save(output: string | null, scenarios: Scenario[], pngs: (Buffer | Error)[]) {
+function save(output: string | null, scenarios: Scenario[], pngs: (Uint8Array | Error)[]) {
     if (!scenarios.length) return Promise.resolve();
 
     const promises = scenarios.map((scenario) => {

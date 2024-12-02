@@ -79,7 +79,7 @@ export class Config {
     /** If `true`, open browser and await for navigation. */
     watch = false;
     /** Browser logs setup. */
-    log = LogLevel.Warn & LogLevel.Error;
+    log = LogLevel.Warn | LogLevel.Error;
     /** Maximum number of browser contexts running simultaneously. */
     maxContexts = null;
     async load(path) {
