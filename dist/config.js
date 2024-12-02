@@ -74,6 +74,8 @@ export class Config {
     save = SaveMode.None;
     /** Web server port. */
     port = 8080;
+    /** If `true`, open browser in headless mode. */
+    headless = false;
     /** If `true`, open browser and await for navigation. */
     watch = false;
     /** Browser logs setup. */

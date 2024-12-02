@@ -183,12 +183,11 @@ export class ScreenshotRunner {
 
         console.log('Launch browser with args:', args);
 
-        const headless = !config.watch;
         const browser = await puppeteerLauncher({
-            headless,
+            headless: config.headless,
             /* Prefer chrome since canary rendering isn't always working */
             channel: 'chrome',
-            devtools: !headless,
+            devtools: config.watch,
             timeout: !config.watch ? 30000 : 0,
             waitForInitialPage: true,
             args,

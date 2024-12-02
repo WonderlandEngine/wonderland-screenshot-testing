@@ -180,5 +180,6 @@ In watch mode, the browser will automatically open and kept alive even if tests 
 |**--save-on-failure**|_Flag_|Overwrites failed reference(s) with the test(s) screenshot|
 |**--save-difference**|_Flag_|Save image difference screenshots for **failed** tests|
 |**-o, --output**|_Path_|Output folder for saved screenshots. References overwritten by default|
-|**-w, --watch**|_Flag_|Watch, i.e., open the browser for each project|
+|**-H, --headless**|_Flag_|Headless mode, i.e., run the browser without any visible UI|
+|**-w, --watch**|_Flag_|Watch mode, i.e., keep the browser open for each project|
 |**--logs**|_Path_|Path to store the browser logs. If not provided, logs will be discarded|

@@ -76,6 +76,8 @@ export declare class Config {
     save: number;
     /** Web server port. */
     port: number;
+    /** If `true`, open browser in headless mode. */
+    headless: boolean;
     /** If `true`, open browser and await for navigation. */
     watch: boolean;
     /** Browser logs setup. */
