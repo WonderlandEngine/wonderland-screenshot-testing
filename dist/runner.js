@@ -328,15 +328,6 @@ export class ScreenshotRunner {
         /* We do not use waitUntil: 'networkidle0' in order to setup
          * the event sink before the project is fully loaded. */
         await page.goto(`http://localhost:${config.port}/index.html`);
-        /* The runner also supports scene loaded events, forwarded in the DOM.
-         * Each time a load event occurs, we convert it to a unique event name and
-         * forward the call to `testScreenshot`. */
-        await page.evaluate(() => {
-            document.addEventListener('wle-scene-ready', function (e) {
-                // @ts-ignore
-                window.testScreenshot(`wle-scene-ready:${e.detail.filename}`);
-            });
-        });
         if (config.watch) {
             await page.waitForNavigation();
         }

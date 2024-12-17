@@ -65,17 +65,6 @@ export interface Project {
     scenarios: Scenario[];
 }
 
-/**
- * Convert the 'readyEvent' entry in a configuration
- * into a generic 'event'.
- *
- * @param event The ready event to convert.
- * @returns An event of the form `wle-scene-ready:${event}`.
- */
-export function convertReadyEvent(event: string) {
-    return `wle-scene-ready:${event}`;
-}
-
 /** Raw scenario description from the json file. */
 interface ScenarioJson extends Scenario {
     readyEvent: string;
@@ -178,7 +167,7 @@ export class Config {
         const name = basename(path);
         const scenarios = (jsonScenarios as ScenarioJson[]).map((s, index) => ({
             index,
-            event: s.event ?? (s.readyEvent ? convertReadyEvent(s.readyEvent) : ''),
+            event: s.event,
             reference: resolve(path, s.reference),
             tolerance: s.tolerance ?? 0.005,
             perPixelTolerance: s.perPixelTolerance ?? 0.1,

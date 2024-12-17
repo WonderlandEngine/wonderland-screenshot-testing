@@ -55,14 +55,6 @@ export interface Project {
     scenarios: Scenario[];
 }
 /**
- * Convert the 'readyEvent' entry in a configuration
- * into a generic 'event'.
- *
- * @param event The ready event to convert.
- * @returns An event of the form `wle-scene-ready:${event}`.
- */
-export declare function convertReadyEvent(event: string): string;
-/**
  * Configuration for {@link ScreenshotRunner}.
  */
 export declare class Config {
