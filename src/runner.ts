@@ -172,7 +172,14 @@ export class ScreenshotRunner {
         const server = createServer(this._httpCallback);
         server.listen(config.port);
 
-        const args = ['--no-sandbox', '--ignore-gpu-blocklist'];
+        const args = [
+            '--no-sandbox',
+            '--ignore-gpu-blocklist',
+            `--disable-extensions-except=${process.cwd()}/${config.extensions.join(',')}`,
+            `--load-extension=${process.cwd()}/${config.extensions.join(',')}`,
+            '--enable-automation',
+        ];
+
         if (process.platform === 'linux') {
             args.push(
                 '--enable-features=Vulkan',
@@ -299,7 +306,11 @@ export class ScreenshotRunner {
         const contexts: (BrowserContext | null)[] = await Promise.all(
             Array.from({length: contextsCount})
                 .fill(null)
-                .map((_, i) => i == 0 ? browser.defaultBrowserContext() : browser.createBrowserContext())
+                .map((_, i) =>
+                    i == 0
+                        ? browser.defaultBrowserContext()
+                        : browser.createBrowserContext()
+                )
         );
         const result: Promise<(Uint8Array | Error)[]>[] = Array.from(projects, () => null!);
 

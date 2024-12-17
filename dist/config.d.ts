@@ -72,6 +72,8 @@ export declare class Config {
     output: string | null;
     /** Test runner mode. */
     mode: RunnerMode;
+    /** Chrome extensions to load. */
+    extensions: string[];
     /** Bitset to manage screenshots to save. */
     save: number;
     /** Web server port. */

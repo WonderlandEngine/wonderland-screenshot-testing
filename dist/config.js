@@ -70,6 +70,8 @@ export class Config {
     output = null;
     /** Test runner mode. */
     mode = RunnerMode.CaptureAndCompare;
+    /** Chrome extensions to load. */
+    extensions = [];
     /** Bitset to manage screenshots to save. */
     save = SaveMode.None;
     /** Web server port. */

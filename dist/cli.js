@@ -21,7 +21,8 @@ function printHelp(summary = false) {
     console.log('\t-o, --output:\tScreenshot output folder. Overwrites references by default\n' +
         '\t--mode:\tCapture and compare (`capture-and-compare`), or capture only (`capture`)\n' +
         '\t--max-contexts:\tMaximum number of parralel browser instances. Up to one per project.\n' +
-        '\t--logs:\tPath to save the browser logs. Logs will be discarded if not provided\n');
+        '\t--logs:\tPath to save the browser logs. Logs will be discarded if not provided\n' +
+        '\t--extensions:\tPaths to Chrome extensions to load\n');
     console.log('\nFLAGS:');
     console.log('\t-h, --help:\tPrints help\n' +
         '\t-w, --watch:\tStart the runner in watch mode for debugging\n' +
@@ -45,6 +46,7 @@ try {
             save: { type: 'boolean', short: 's' },
             logs: { type: 'string' },
             mode: { type: 'string', default: 'capture-and-compare' },
+            extensions: { type: 'string' },
             'max-contexts': { type: 'string' },
             'save-on-failure': { type: 'boolean' },
             'save-difference': { type: 'boolean' },
@@ -68,6 +70,7 @@ config.headless = args.headless ?? false;
 config.output = args.output ? resolve(args.output) : null;
 config.mode =
     args.mode === 'capture-and-compare' ? RunnerMode.CaptureAndCompare : RunnerMode.Capture;
+config.extensions = args.extensions?.split(',') ?? [];
 config.maxContexts = maxContexts && !isNaN(maxContexts) ? maxContexts : null;
 config.save |= args.save ? SaveMode.SuccessAndFailures : SaveMode.None;
 config.save |= args['save-on-failure'] ? SaveMode.Failure : SaveMode.None;

@@ -118,6 +118,9 @@ export class Config {
     /** Test runner mode. */
     mode: RunnerMode = RunnerMode.CaptureAndCompare;
 
+    /** Chrome extensions to load. */
+    extensions: string[] = [];
+
     /** Bitset to manage screenshots to save. */
     save: number = SaveMode.None;
 
