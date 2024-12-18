@@ -1,5 +1,6 @@
-import {resolve} from 'path';
+import {dirname, resolve} from 'path';
 import {Page} from 'puppeteer-core';
+import {fileURLToPath} from 'url';
 
 /* Taken from:
  * https://github.com/meta-quest/immersive-web-emulator/blob/7abf503a42ac9d235351ca84d5bf9f3e06bb65de/src/devtool/js/devices.js
@@ -49,9 +50,21 @@ const Devices = [
 /** Inject the WebXR specification polyfill */
 export async function injectWebXRPolyfill(page: Page) {
     /* Inject the Meta webxr polyfill */
-    const dirname = import.meta.dirname ?? global.__dirname;
+
+    let currentDirectory: string | undefined = undefined;
+    if (import.meta.dirname) {
+        currentDirectory = import.meta.dirname;
+    } else if (import.meta.url) {
+        const __filename = fileURLToPath(import.meta.url);
+        currentDirectory = dirname(__filename);
+    } else {
+        currentDirectory = global.__dirname;
+    }
+
+    if (!currentDirectory) throw new Error('Failed to resolve dirname');
+
     await page.addScriptTag({
-        path: resolve(dirname, 'webxr-polyfill.js'),
+        path: resolve(currentDirectory, 'webxr-polyfill.js'),
         type: 'text/javascript',
     });
 
