@@ -288,7 +288,7 @@ export class ScreenshotRunner {
         };
         const onerror = (error) => {
             if (this._config.log & LogLevel.Error) {
-                const errorStr = error.stack ? `Stacktrace:\n${error.stack}` : error + '';
+                const errorStr = error.stack ? `${error.stack}` : error + '';
                 console.error(`[browser][${project.name}][error]: ${errorStr}`);
             }
             errors.push(error);
@@ -298,18 +298,14 @@ export class ScreenshotRunner {
         page.on('pageerror', onerror);
         page.on('error', onerror);
         page.on('console', (message) => {
-            if (message.type() !== 'log' &&
-                message.type() !== 'warn' &&
-                message.type() !== 'error')
-                return;
-            log(message.type(), message.text());
-            if (message.type() === 'error') {
-                if (message.args()) {
-                    for (const error of message.args()) {
-                        onerror(error.toString());
-                    }
-                }
-                onerror(message.text());
+            switch (message.type()) {
+                case 'log':
+                case 'warn':
+                    log(message.type(), message.text());
+                    break;
+                case 'error':
+                    onerror(message.text());
+                    break;
             }
         });
         page.setCacheEnabled(false);
@@ -351,7 +347,7 @@ export class ScreenshotRunner {
             });
         });
         if (config.watch) {
-            await page.waitForNavigation();
+            await page.waitForNavigation({ timeout: 0 });
         }
         let time = 0;
         while (eventCount < count && time < timeout) {
