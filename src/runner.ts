@@ -18,6 +18,7 @@ import pixelmatch from 'pixelmatch';
 import {Config, Scenario, SaveMode, RunnerMode} from './config.js';
 import {Dimensions, Image2d} from './image.js';
 import {mkdirp, summarizePath} from './utils.js';
+import { injectWebXRPolyfill } from './webxr.js';
 
 /**
  * Parse the buffer as a png.
@@ -109,11 +110,6 @@ export class ScreenshotRunner {
         req: IncomingMessage,
         response: ServerResponse<IncomingMessage>
     ) => {
-        /* Check for custom assets and polyfills */
-        if(req.url === '/webxr-polyfill.js') {
-            return handler(req, response, {public: import.meta.dirname});
-        }
-
         const header = req.headers['test-project'] ?? '';
         const projectId = parseInt(Array.isArray(header) ? header[0] : header);
         if (isNaN(projectId)) return handler(req, response);
@@ -422,18 +418,11 @@ export class ScreenshotRunner {
         }
 
         await page.exposeFunction('testScreenshot', processEvent);
+
         /* We do not use waitUntil: 'networkidle0' in order to setup
          * the event sink before the project is fully loaded. */
         await page.goto(`http://localhost:${config.port}/index.html`);
-
-        await page.evaluate(() => {
-            /* Undefine `xr` so that webxr-polyfill always injects itself */
-            Object.defineProperty(window.navigator, 'xr', {
-                value: undefined,
-                configurable: true,
-            });
-        });
-        await page.addScriptTag({url: 'webxr-polyfill.js'});
+        await injectWebXRPolyfill(page);
 
         /* The runner also supports scene loaded events, forwarded in the DOM.
          * Each time a load event occurs, we convert it to a unique event name and
@@ -454,13 +443,6 @@ export class ScreenshotRunner {
             const debounceTime = 1000;
             await new Promise((res) => setTimeout(res, debounceTime));
             time += debounceTime;
-        }
-
-        for (const error of errors) {
-            const errorStr = error.stack ? `Stacktrace:\n${error.stack}` : error + '';
-            console.error(
-                `[${project.name}] Uncaught browser top-level error: ${errorStr}`
-            );
         }
 
         await page.close();
