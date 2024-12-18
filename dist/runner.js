@@ -10,6 +10,7 @@ import handler from 'serve-handler';
 import pixelmatch from 'pixelmatch';
 import { SaveMode, RunnerMode } from './config.js';
 import { mkdirp, summarizePath } from './utils.js';
+import { injectWebXRPolyfill } from './webxr.js';
 /**
  * Parse the buffer as a png.
  *
@@ -239,7 +240,9 @@ export class ScreenshotRunner {
         console.log(`\n📷 Capturing scenarios for ${projects.length} project(s)...`);
         const contexts = await Promise.all(Array.from({ length: contextsCount })
             .fill(null)
-            .map((_, i) => i == 0 ? browser.defaultBrowserContext() : browser.createBrowserContext()));
+            .map((_, i) => i == 0
+            ? browser.defaultBrowserContext()
+            : browser.createBrowserContext()));
         const result = Array.from(projects, () => null);
         for (let i = 0; i < projects.length; ++i) {
             let freeContext = -1;
@@ -337,6 +340,7 @@ export class ScreenshotRunner {
         /* We do not use waitUntil: 'networkidle0' in order to setup
          * the event sink before the project is fully loaded. */
         await page.goto(`http://localhost:${config.port}/index.html`);
+        await injectWebXRPolyfill(page);
         /* The runner also supports scene loaded events, forwarded in the DOM.
          * Each time a load event occurs, we convert it to a unique event name and
          * forward the call to `testScreenshot`. */
@@ -354,10 +358,6 @@ export class ScreenshotRunner {
             const debounceTime = 1000;
             await new Promise((res) => setTimeout(res, debounceTime));
             time += debounceTime;
-        }
-        for (const error of errors) {
-            const errorStr = error.stack ? `Stacktrace:\n${error.stack}` : error + '';
-            console.error(`[${project.name}] Uncaught browser top-level error: ${errorStr}`);
         }
         await page.close();
         return results;

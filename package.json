@@ -12,12 +12,13 @@
   },
   "prettier": "@wonderlandengine/prettier-config",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build:webxrpolyfill",
+    "build:webxrpolyfill": "cp ./thirdparty/webxr-polyfill.js dist",
     "test": "npm run build && node dist/cli.js",
     "pretty": "prettier --write \"./src/**/*.{js,ts}\""
   },
   "dependencies": {
-    "@types/node": "^18.11.9",
+    "@types/node": "^22.10.2",
     "@types/pixelmatch": "^5.2.6",
     "@types/pngjs": "^6.0.3",
     "@types/serve-handler": "^6.1.2",
