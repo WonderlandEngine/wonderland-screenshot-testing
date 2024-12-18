@@ -413,7 +413,7 @@ export class ScreenshotRunner {
         await page.goto(`http://localhost:${config.port}/index.html`);
 
         if (config.watch) {
-            await page.waitForNavigation();
+            await page.waitForNavigation({timeout: 0});
         }
 
         let time = 0;

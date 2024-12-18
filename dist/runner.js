@@ -329,7 +329,7 @@ export class ScreenshotRunner {
          * the event sink before the project is fully loaded. */
         await page.goto(`http://localhost:${config.port}/index.html`);
         if (config.watch) {
-            await page.waitForNavigation();
+            await page.waitForNavigation({ timeout: 0 });
         }
         let time = 0;
         while (error === null && eventCount < count && time < timeout) {
