@@ -1,5 +1,5 @@
-import { resolve } from "path";
-import { Page } from "puppeteer-core";
+import {resolve} from 'path';
+import {Page} from 'puppeteer-core';
 
 /* Taken from:
  * https://github.com/meta-quest/immersive-web-emulator/blob/7abf503a42ac9d235351ca84d5bf9f3e06bb65de/src/devtool/js/devices.js
@@ -43,21 +43,26 @@ const Devices = [
             axes: [2, 3, 0, 1],
             buttons: [1, 2, null, 0, 3, 4, null],
         },
-    }
+    },
 ];
 
 /** Inject the WebXR specification polyfill */
 export async function injectWebXRPolyfill(page: Page) {
     /* Inject the Meta webxr polyfill */
-    await page.addScriptTag({path: resolve(import.meta.dirname, 'webxr-polyfill.js'), type: 'text/javascript'});
+    await page.addScriptTag({
+        path: resolve(import.meta.dirname, 'webxr-polyfill.js'),
+        type: 'text/javascript',
+    });
 
     /* Meta's webxr polyfill is tightly coupled with the extension.
      * The polyfill listens to event sent by the dev tools to work properly. */
     return page.evaluate((device) => {
-        window.dispatchEvent(new CustomEvent('pa-device-init', {
-            detail: {
-                deviceDefinition: device
-            }
-        }));
+        window.dispatchEvent(
+            new CustomEvent('pa-device-init', {
+                detail: {
+                    deviceDefinition: device,
+                },
+            })
+        );
     }, Devices[0]);
 }

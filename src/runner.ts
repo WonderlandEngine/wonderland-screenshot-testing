@@ -18,7 +18,7 @@ import pixelmatch from 'pixelmatch';
 import {Config, Scenario, SaveMode, RunnerMode} from './config.js';
 import {Dimensions, Image2d} from './image.js';
 import {mkdirp, summarizePath} from './utils.js';
-import { injectWebXRPolyfill } from './webxr.js';
+import {injectWebXRPolyfill} from './webxr.js';
 
 /**
  * Parse the buffer as a png.
@@ -300,7 +300,11 @@ export class ScreenshotRunner {
         const contexts: (BrowserContext | null)[] = await Promise.all(
             Array.from({length: contextsCount})
                 .fill(null)
-                .map((_, i) => i == 0 ? browser.defaultBrowserContext() : browser.createBrowserContext())
+                .map((_, i) =>
+                    i == 0
+                        ? browser.defaultBrowserContext()
+                        : browser.createBrowserContext()
+                )
         );
         const result: Promise<(Uint8Array | Error)[]>[] = Array.from(projects, () => null!);
 
