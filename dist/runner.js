@@ -288,8 +288,9 @@ export class ScreenshotRunner {
         function onerror(err) {
             error = err;
         }
-        const pages = await browser.pages();
-        const page = pages.length > 0 ? pages[0] : await browser.newPage();
+        /* We can't actually use the 'pages[0]' on the main context, as if it's
+         * the only context it will close the browser when we close it below */
+        const page = await browser.newPage();
         page.on('pageerror', onerror);
         page.on('error', onerror);
         page.on('console', (message) => {
