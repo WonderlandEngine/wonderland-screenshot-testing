@@ -90,6 +90,10 @@ export class ScreenshotRunner {
     _contextDebounce = 750;
     /** HTTP server callback. */
     _httpCallback = (req, response) => {
+        /* Check for custom assets and polyfills */
+        if (req.url === '/webxr-polyfill.js') {
+            return handler(req, response, { public: import.meta.dirname });
+        }
         const header = req.headers['test-project'] ?? '';
         const projectId = parseInt(Array.isArray(header) ? header[0] : header);
         if (isNaN(projectId))
@@ -337,6 +341,14 @@ export class ScreenshotRunner {
         /* We do not use waitUntil: 'networkidle0' in order to setup
          * the event sink before the project is fully loaded. */
         await page.goto(`http://localhost:${config.port}/index.html`);
+        await page.evaluate(() => {
+            /* Undefine `xr` so that webxr-polyfill always injects itself */
+            Object.defineProperty(window.navigator, 'xr', {
+                value: undefined,
+                configurable: true,
+            });
+        });
+        await page.addScriptTag({ url: 'webxr-polyfill.js' });
         /* The runner also supports scene loaded events, forwarded in the DOM.
          * Each time a load event occurs, we convert it to a unique event name and
          * forward the call to `testScreenshot`. */
