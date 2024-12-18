@@ -240,7 +240,9 @@ export class ScreenshotRunner {
         console.log(`\n📷 Capturing scenarios for ${projects.length} project(s)...`);
         const contexts = await Promise.all(Array.from({ length: contextsCount })
             .fill(null)
-            .map((_, i) => i == 0 ? browser.defaultBrowserContext() : browser.createBrowserContext()));
+            .map((_, i) => i == 0
+            ? browser.defaultBrowserContext()
+            : browser.createBrowserContext()));
         const result = Array.from(projects, () => null);
         for (let i = 0; i < projects.length; ++i) {
             let freeContext = -1;
