@@ -58,7 +58,7 @@ export var LogLevel;
 const LogTypeToLevel = {
     log: LogLevel.Info,
     warn: LogLevel.Warn,
-    Error: LogLevel.Error,
+    error: LogLevel.Error,
 };
 /**
  * Screenshot test suite runner.
@@ -276,21 +276,38 @@ export class ScreenshotRunner {
             results[i] = new Error(`event '${event}' wasn't dispatched`);
         }
         let eventCount = 0;
-        let error = null;
-        function onerror(err) {
-            error = err;
-        }
+        let errors = [];
+        const log = (type, text) => {
+            const level = LogTypeToLevel[type];
+            this.logs[projectId].push(`[${project.name}][${type}] ${text}`);
+            if (this._config.log & level)
+                console[type](`[browser][${type}] ${text}`);
+        };
+        const onerror = (error) => {
+            if (this._config.log & LogLevel.Error) {
+                const errorStr = error.stack ? `Stacktrace:\n${error.stack}` : error + '';
+                console.error(`[browser][${project.name}][error]: ${errorStr}`);
+            }
+            errors.push(error);
+        };
         const pages = await browser.pages();
         const page = pages.length > 0 ? pages[0] : await browser.newPage();
         page.on('pageerror', onerror);
         page.on('error', onerror);
         page.on('console', (message) => {
-            const msg = message.text();
-            const type = message.type();
-            const level = LogTypeToLevel[type];
-            this.logs[projectId].push(`[${project.name}][${message.type()}] ${msg}`);
-            if (this._config.log & level)
-                console[type](`[browser] ${msg}`);
+            if (message.type() !== 'log' &&
+                message.type() !== 'warn' &&
+                message.type() !== 'error')
+                return;
+            log(message.type(), message.text());
+            if (message.type() === 'error') {
+                if (message.args()) {
+                    for (const error of message.args()) {
+                        onerror(error.toString());
+                    }
+                }
+                onerror(message.text());
+            }
         });
         page.setCacheEnabled(false);
         page.setExtraHTTPHeaders({
@@ -333,12 +350,12 @@ export class ScreenshotRunner {
             await page.waitForNavigation();
         }
         let time = 0;
-        while (error === null && eventCount < count && time < timeout) {
+        while (eventCount < count && time < timeout) {
             const debounceTime = 1000;
             await new Promise((res) => setTimeout(res, debounceTime));
             time += debounceTime;
         }
-        if (error !== null) {
+        for (const error of errors) {
             const errorStr = error.stack ? `Stacktrace:\n${error.stack}` : error + '';
             console.error(`[${project.name}] Uncaught browser top-level error: ${errorStr}`);
         }

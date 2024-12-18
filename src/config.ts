@@ -131,7 +131,7 @@ export class Config {
     watch: boolean = false;
 
     /** Browser logs setup. */
-    log: LogLevel = LogLevel.Warn & LogLevel.Error;
+    log: LogLevel = LogLevel.Warn | LogLevel.Error;
 
     /** Maximum number of browser contexts running simultaneously. */
     maxContexts: number | null = null;
