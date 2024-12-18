@@ -46,8 +46,9 @@ const Devices = [
 /** Inject the WebXR specification polyfill */
 export async function injectWebXRPolyfill(page) {
     /* Inject the Meta webxr polyfill */
+    const dirname = import.meta.dirname ?? global.__dirname;
     await page.addScriptTag({
-        path: resolve(import.meta.dirname, 'webxr-polyfill.js'),
+        path: resolve(dirname, 'webxr-polyfill.js'),
         type: 'text/javascript',
     });
     /* Meta's webxr polyfill is tightly coupled with the extension.
