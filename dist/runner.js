@@ -141,8 +141,13 @@ export class ScreenshotRunner {
         server.listen(config.port);
         const args = ['--no-sandbox', '--ignore-gpu-blocklist'];
         if (process.platform === 'linux') {
-            args.push('--enable-features=Vulkan', '--enable-skia-graphite', '--enable-unsafe-webgpu');
+            // args.push(
+            //     '--enable-features=Vulkan',
+            //     '--enable-skia-graphite',
+            //     '--enable-unsafe-webgpu'
+            // );
         }
+        args.push('--use-gl=angle');
         console.log('Launch browser with args:', args);
         const browser = await puppeteerLauncher({
             headless: config.headless,
