@@ -63,6 +63,8 @@ export interface Project {
     /** Screenshot height. Defaults to **270**. */
     height: number;
     scenarios: Scenario[];
+    /** Default value for {@link Scenario.tolerance}. */
+    defaultTolerance: number;
 }
 
 /**
@@ -163,7 +165,7 @@ export class Config {
         const data = await readFile(resolve(configPath), 'utf8');
         const json = JSON.parse(data) as Project;
 
-        const {timeout = 60000} = json;
+        const {timeout = 60000, defaultTolerance = 0.005} = json;
         const jsonScenarios = Array.isArray(json.scenarios)
             ? json.scenarios
             : [json.scenarios];
@@ -177,11 +179,11 @@ export class Config {
             index,
             event: s.event ?? (s.readyEvent ? convertReadyEvent(s.readyEvent) : ''),
             reference: resolve(path, s.reference),
-            tolerance: s.tolerance ?? 0.005,
+            tolerance: s.tolerance ?? defaultTolerance,
             perPixelTolerance: s.perPixelTolerance ?? 0.1,
         }));
 
-        this.projects.push({timeout, path, name, scenarios, width, height});
+        this.projects.push({timeout, path, name, scenarios, width, height, defaultTolerance});
     }
 
     /**
