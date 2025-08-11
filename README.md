@@ -95,14 +95,18 @@ Every project must have a configuration file:
     // Height of the screenshot capture. Must match the image reference height.
     "height": 270,
 
+    // Default value for each scenario tolerance
+    "defaultTolerance": 0.005,
+
     "scenarios": [
         {
             // Default loading event: Wait for `MyScene.bin` to load
             "readyEvent": "MyScene.bin",
             // Reference image to compare against
             "reference": "./scene-loaded.png",
-            // RMSE tolerance for the entire image
-            "tolerance": 4,
+            // Percentage of failed pixels allowed. Should be in range [0; 1].
+            // Defaults to `0.005`, i.e., 0.5% error.
+            "tolerance": 0.005,
             // Maximum authorized error per-pixel
             "perPixelTolerance": 16
         },

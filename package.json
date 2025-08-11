@@ -13,6 +13,7 @@
   "prettier": "@wonderlandengine/prettier-config",
   "scripts": {
     "build": "tsc && npm run build:webxrpolyfill",
+    "build:watch": "tsc -w",
     "build:webxrpolyfill": "cp ./thirdparty/webxr-polyfill.js dist",
     "test": "npm run build && node dist/cli.js",
     "pretty": "prettier --write \"./src/**/*.{js,ts}\""

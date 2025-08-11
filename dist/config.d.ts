@@ -53,6 +53,8 @@ export interface Project {
     /** Screenshot height. Defaults to **270**. */
     height: number;
     scenarios: Scenario[];
+    /** Default value for {@link Scenario.tolerance}. */
+    defaultTolerance: number;
 }
 /**
  * Convert the 'readyEvent' entry in a configuration
