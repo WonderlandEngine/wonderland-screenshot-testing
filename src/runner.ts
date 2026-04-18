@@ -518,6 +518,8 @@ export class ScreenshotRunner {
 function save(output: string | null, scenarios: Scenario[], pngs: (Uint8Array | Error)[]) {
     if (!scenarios.length) return Promise.resolve();
 
+    const savedSet = new Set();
+
     const promises = scenarios.map((scenario) => {
         const data = pngs[scenario.index];
         if (data instanceof Error) return;
@@ -525,6 +527,12 @@ function save(output: string | null, scenarios: Scenario[], pngs: (Uint8Array | 
         const path = output
             ? join(output, basename(scenario.reference))
             : scenario.reference;
+
+        if(savedSet.has(path)) {
+            /* Multiple tests can reference the same screenshot */
+            return;
+        }
+        savedSet.add(path);
 
         const summary = summarizePath(path);
         return writeFile(path, data)
